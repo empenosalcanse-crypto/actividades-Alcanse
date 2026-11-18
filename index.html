@@ -164,6 +164,11 @@ td.dif-n{color:var(--bad);font-weight:700}td.dif-p{color:var(--warn);font-weight
 .m-oro{background:var(--amarillo);color:#3a2a00}.m-plata{background:#8f9aa0}.m-bronce{background:#b87333}
 .cj-box{border:1px solid var(--line);border-top:4px solid var(--azul);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--surface)}
 .cj-box .cap td input{min-width:70px}
+.adj{border:1px dashed var(--azul);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:8px;background:var(--azul-soft)}
+.adj-l{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.adj-i{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+.adj-t{font-size:.72rem;font-weight:700;background:var(--azul);color:#fff;border-radius:5px;padding:2px 6px}
+.adj-n{flex:1 1 140px;min-width:0;overflow-wrap:anywhere;font-weight:600;font-size:.9rem}
 .hint-scroll{display:none}
 @media (max-width:560px){.hint-scroll{display:block}.cap td input{min-width:54px}.who{align-items:flex-start;width:100%}.ttl h1{font-size:1.4rem}th,td{padding:7px 8px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -767,7 +772,7 @@ function abrir(k){
   let inst=S.inst[k];const rec=(S.idx[cid]||{})[key];
   if(!inst&&rec){const a=actById(rec.act)||{id:rec.act,nombre:rec.nombre,frec:'diario',tipo:rec.tipo||'check'};inst={key,act:a,per:rec.per,suc:rec.suc,porSuc:!!(a.porSuc),ini:new Date(rec.lim),lim:new Date(rec.lim),mes:rec.mes,col:cid}}
   if(!inst)return;
-  S.modal={k,cid,key,inst,ini:fHora(ahora())};render();
+  S.modal={k,cid,key,inst,ini:fHora(ahora()),files:[],keep:null};render();
 }
 function cerrar(){S.modal=null;delete S.msg.mod;render()}
 function drawModal(){
@@ -792,7 +797,8 @@ function drawModal(){
     <p class="note">Esta actividad se marca sola cuando validas los dos conteos. Si la sucursal no hizo algún conteo, regístrala con un comentario explicando qué pasó.</p>`}
   else if(a.tipo==='campos')body+=`<div class="fgrid">${(a.campos||[]).map(c=>`<label class="fl" for="cp_${c.k}">${esc(c.l)}${c.t==='money'?' ($)':''}${c.t==='txt'?`<textarea class="in" id="cp_${c.k}" ${dis}>${esc(d[c.k]||'')}</textarea>`:`<input class="in" id="cp_${c.k}" inputmode="decimal" value="${esc(d[c.k]??'')}" ${dis}>`}</label>`).join('')}</div>${a.lista?listaHtml(a,d,dis):''}`;
   else if(!rec&&!ro)body+=`<p>Al guardar confirmas que realizaste esta actividad${inst.porSuc?' para Suc. '+esc(inst.suc):''}.</p>`;
-  body+=`<label class="fl" for="mNota">Comentario${a.tipo==='check'?' (opcional)':''}<textarea class="in" id="mNota" ${dis} placeholder="${ro?'':'Algo que Dirección o la coordinación deba saber'}">${esc(rec?rec.nota||'':'')}</textarea></label>`;
+  if(a.adjunto)body+=adjHtml(md,rec,ro);
+  body+=`<label class="fl" for="mNota">Comentario${a.tipo==='check'?' (opcional)':''}<textarea class="in" id="mNota" ${dis} placeholder="${ro?'':'Algo que Dirección o la coordinación deba saber'}">${esc(md.nota!=null?md.nota:(rec?rec.nota||'':''))}</textarea></label>`;
   const puedeVal=hecho(rec)&&!val&&!propio&&(esFormato(a.tipo)?esMgr():(validable(cid,a)&&puedeValidarA(cid,a)));
   const vInfo=val?`<div class="alerta ok"><b>Validado</b><span>${esc(val.nombre||'')} · ${fCorta(new Date(val.at))} ${fHora(new Date(val.at))}${val.nota?' · '+esc(val.nota):''}</span></div>`:'';
   const col=colById(cid);
@@ -816,6 +822,7 @@ function drawModal(){
   const sv=$('#mSave');if(sv)sv.onclick=()=>guardar(md);
   const av=$('#mAvance');if(av)av.onclick=()=>guardar(md,true);
   const vb=$('#mVal');if(vb)vb.onclick=()=>validar(md,rec);
+  if(a.adjunto)bindAdj(md,rec,ro);
   const cb=$('#mCal');if(cb)cb.onclick=()=>pdfCalPub(inst.mes,cid,'mod');
   const pb=$('#mPdf');if(pb)pb.onclick=()=>pdfFormato(cid,rec,a.tipo);
   const pt=$('#mPdfTop');if(pt)pt.onclick=()=>pdfFormato(cid,rec,a.tipo);
@@ -955,6 +962,38 @@ function listaHtml(a,d,dis){const Lc=a.lista;const n=Lc.n||10;const R=d.lista||[
 function leerLista(a){const Lc=a.lista;const out=[];for(let i=0;i<(Lc.n||10);i++){const r={};let any=false;Lc.cols.forEach(c=>{const v=String(($(`#ls_${i}_${c.k}`)||{}).value||'').trim();if(v!=='')any=true;r[c.k]=c.t==='txt'?v:(v===''?'':num(v))});if(any)out.push(r)}return out}
 function bindLista(a){const Lc=a.lista;const upd=()=>{const L=leerLista(a);Lc.cols.forEach((c,j)=>{const el=$(`#lsT_${c.k}`);if(!el)return;if(c.t==='txt'){el.textContent=j===0?`Totales · ${L.length} ${L.length===1?'cliente':'clientes'}`:'';return}const t=L.reduce((s2,r)=>s2+num(r[c.k]),0);el.textContent=c.t==='money'?m2(t):String(t)})};
   $$('#modal input[id^="ls_"]').forEach(i=>i.addEventListener('input',upd));upd()}
+/* ============ archivos adjuntos (foto o PDF) ============ */
+const ADJ_MAX=3,ADJ_BYTES=10*1024*1024;
+function adjHtml(md,rec,ro){
+  const keep=md.keep||((rec&&rec.datos&&rec.datos.archivos)||[]);const n=keep.length+md.files.length;
+  const item=(f,i,nuevo)=>`<li class="adj-i"><span class="adj-t">${/pdf/.test(f.tipo||f.type||'')?'PDF':'Foto'}</span><span class="adj-n">${esc(f.nombre||f.name)}</span><span class="note">${Math.round((f.tam||f.size||0)/1024)} KB${nuevo?' · por subir':''}</span>
+    ${nuevo?'':`<a class="btn sm" data-adjver="${i}" href="#" target="_blank" rel="noopener">Ver</a>`}${ro?'':`<button class="btn sm dang" type="button" data-adjdel="${nuevo?'n':'k'}${i}">Quitar</button>`}</li>`;
+  return`<div class="adj"><div class="row"><b>Evidencia: foto o PDF</b><span class="note">${n} de ${ADJ_MAX}</span></div>
+  ${n?`<ul class="adj-l">${keep.map((f,i)=>item(f,i,false)).join('')}${md.files.map((f,i)=>item(f,i,true)).join('')}</ul>`:`<p class="note">${ro?'Sin archivos.':'Toma una foto del formato o sube el PDF. Hasta 3 archivos de 10 MB.'}</p>`}
+  ${!ro&&n<ADJ_MAX?`<label class="btn" for="adjIn" style="width:max-content">Subir foto o PDF</label><input id="adjIn" type="file" accept="image/*,application/pdf" multiple hidden>`:''}</div>`;
+}
+function bindAdj(md,rec,ro){
+  const keep=md.keep||((rec&&rec.datos&&rec.datos.archivos)||[]);
+  $$('[data-adjver]').forEach(el=>{const f=keep[+el.dataset.adjver];if(!f)return;el.removeAttribute('href');el.textContent='Cargando…';
+    S.sb.storage.from('evidencias').createSignedUrl(f.path,3600).then(({data,error})=>{if(error||!data){el.textContent='No disponible';return}el.href=data.signedUrl;el.textContent='Ver'})});
+  const inp=$('#adjIn');if(inp)inp.onchange=async()=>{const fs=[...inp.files];inp.value='';
+    for(const f of fs){if(!/^image\/|application\/pdf/.test(f.type)){flash('mod','err',`"${f.name}" no es foto ni PDF.`);continue}
+      if((md.keep||keep).length+md.files.length>=ADJ_MAX){flash('mod','err',`Máximo ${ADJ_MAX} archivos.`);break}
+      const c=await comprimir(f);if(c.size>ADJ_BYTES){flash('mod','err',`"${f.name}" pesa más de 10 MB.`);continue}md.files.push(c)}
+    md.nota=($('#mNota')||{}).value;md.redraw=true;render()};
+  $$('[data-adjdel]').forEach(el=>el.onclick=()=>{const t=el.dataset.adjdel[0],i=+el.dataset.adjdel.slice(1);if(t==='n')md.files.splice(i,1);else{md.keep=(md.keep||keep.slice());md.keep.splice(i,1)}md.nota=($('#mNota')||{}).value;md.redraw=true;render()});
+}
+async function comprimir(f){
+  if(!/^image\/(jpeg|png|webp)$/.test(f.type)||f.size<700*1024)return f;
+  try{const bmp=await createImageBitmap(f);const k=Math.min(1,1600/Math.max(bmp.width,bmp.height));const cv=document.createElement('canvas');cv.width=Math.round(bmp.width*k);cv.height=Math.round(bmp.height*k);
+    cv.getContext('2d').drawImage(bmp,0,0,cv.width,cv.height);const bl=await new Promise(r=>cv.toBlob(r,'image/jpeg',0.82));if(!bl||bl.size>=f.size)return f;
+    return new File([bl],f.name.replace(/\.\w+$/,'')+'.jpg',{type:'image/jpeg'})}catch(e){return f}
+}
+async function subirAdjuntos(cid,key,files){const out=[];
+  for(const f of files){const safe=String(f.name).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\w.-]+/g,'_').slice(-60);const path=`${cid}/${key}/${Date.now().toString(36)}_${safe}`;
+    const{error}=await S.sb.storage.from('evidencias').upload(path,f,{contentType:f.type||'application/octet-stream',upsert:false});if(error)throw error;
+    out.push({path,nombre:f.name,tipo:f.type,tam:f.size,at:ahora().toISOString()})}
+  return out}
 function formConteo(tipo,d,dis,md){
   const J=tipo==='joyeria';const rows=J?JOYAS:PISO;const mot=J?MOT_J:MOT_P;const R=d.rows||{};
   const head=J?'<th>Tipo de prenda</th><th class="n">SIDEM</th><th class="n">Plata</th><th class="n">Oro</th><th class="n">Diferencia</th><th>Motivo de diferencia</th>'
@@ -1010,6 +1049,8 @@ async function guardar(md,parcial){
   if(a.tipo==='validar'&&!nota){flash('mod','err','Escribe un comentario: qué conteo faltó o por qué no se validó.');return}
   const rec={key:inst.key,act:a.id,nombre:a.nombre,tipo:a.tipo,per:inst.per,suc:inst.suc||'',colab:cid,mes:inst.mes,lim:inst.lim.toISOString(),at:hecho(prev)?prev.at:now.toISOString(),upd:now.toISOString(),datos,nota,por:S.uid};
   const b=$('#mSave');if(b){b.disabled=true;b.textContent='Guardando…'}
+  if(a.adjunto){const keep=md.keep||((prev&&prev.datos&&prev.datos.archivos)||[]);if(a.adjuntoObligatorio&&!keep.length&&!md.files.length){if(b){b.disabled=false;b.textContent='Registrar'}flash('mod','err','Sube la foto o el PDF del reporte antes de guardar.');return}
+    try{const subidos=await subirAdjuntos(cid,inst.key,md.files);rec.datos.archivos=[...keep,...subidos];md.files=[]}catch(e){if(b){b.disabled=false;b.textContent='Registrar'}flash('mod','err','No se pudo subir el archivo: '+(e&&e.message||'revisa tu conexión')+'.');return}}
   const row={colab:cid,key:inst.key,mes:inst.mes,act:a.id,data:rec,user_id:S.uid,at:rec.at,upd:rec.upd};
   const{error}=await S.sb.from('registros').upsert(row,{onConflict:'colab,key'});
   if(error){if(b){b.disabled=false;b.textContent='Registrar'}flash('mod','err',errText(error));return}
