@@ -1176,7 +1176,11 @@ init();
   window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();evt=e;mostrar()});
   window.addEventListener('appinstalled',function(){bar.hidden=true});
   if(ios){tx.textContent='En Safari toca Compartir (el cuadro con flecha hacia arriba) y luego "Agregar a pantalla de inicio".';btn.textContent='Cómo instalar';mostrar()}
-  btn.onclick=function(){if(evt){evt.prompt();evt.userChoice.then(function(){evt=null;bar.hidden=true})}else if(ios){tx.innerHTML='1. Abre esta página en <b>Safari</b>.<br>2. Toca <b>Compartir</b> (cuadro con flecha ↑).<br>3. Elige <b>Agregar a pantalla de inicio</b> y toca <b>Agregar</b>.';btn.hidden=true}};
+  var android=/android/i.test(ua);
+  if(!ios)setTimeout(function(){if(evt||!bar.hidden)return;btn.textContent='Cómo instalar';mostrar()},3500);
+  function pasos(){if(android)return'1. Si estás dentro de otra app (WhatsApp, Facebook, Claude), toca <b>⋮</b> y elige <b>Abrir en Chrome</b>.<br>2. En Chrome toca <b>⋮</b> (arriba a la derecha).<br>3. Elige <b>Instalar app</b> o <b>Agregar a pantalla principal</b>.';
+    return'1. Abre esta página en <b>Chrome</b> o <b>Edge</b>.<br>2. Toca el ícono de instalar al lado derecho de la barra de direcciones, o el menú <b>⋮</b> → <b>Instalar Actividades Alcanse</b>.'}
+  btn.onclick=function(){if(evt){evt.prompt();evt.userChoice.then(function(){evt=null;bar.hidden=true})}else if(ios){tx.innerHTML='1. Abre esta página en <b>Safari</b>.<br>2. Toca <b>Compartir</b> (cuadro con flecha ↑).<br>3. Elige <b>Agregar a pantalla de inicio</b> y toca <b>Agregar</b>.';btn.hidden=true}else{tx.innerHTML=pasos();btn.hidden=true}};
   no.onclick=function(){bar.hidden=true;try{localStorage.setItem('instNo',String(Date.now()+7*864e5))}catch(e){}};
 })();
 </script>
