@@ -380,7 +380,7 @@ let rq=false;function render(){if(rq)return;rq=true;requestAnimationFrame(()=>{r
 function miEquipoSuc(me){if(!me||me.puesto!=='enc')return[];return cfgCols().filter(c=>c.activo!==false&&c.id!==me.id&&(c.puesto==='caj'||c.puesto==='val')&&(!c.suc||c.suc===me.suc))}
 function puedeValidarA(cid,act){const me=meCol();if(S.admin||(S.perfil&&S.perfil.rol==='coord'))return true;if(!me||me.id===cid||me.puesto!=='enc')return false;if(act&&act.valEnc)return act.valEnc===me.suc;return miEquipoSuc(me).some(c=>c.id===cid)}
 function actsValEnc(me){return me&&me.puesto==='enc'?cfgActs().filter(a=>a.activo!==false&&a.valEnc&&a.valEnc===me.suc):[]}
-const validable=(cid,act)=>{const c=colById(cid);return esFormato(act.tipo)||!!act.valEnc||(c&&(c.puesto==='caj'||c.puesto==='val'))};
+const validable=(cid,act)=>{const c=colById(cid);return esFormato(act.tipo)||!!act.valCoord||!!act.valEnc||(c&&(c.puesto==='caj'||c.puesto==='val'))};
 function porValidar(me,now){const hoy=dia0(now);const out=[];const ve=new Set(actsValEnc(me).map(a=>a.id));const ok=(c,r)=>hecho(r)&&!S.vidx[c.id+'~'+r.key]&&new Date(r.at)>=addD(hoy,-14);
   miEquipoSuc(me).forEach(c=>{Object.values(S.idx[c.id]||{}).forEach(r=>{const a=actById(r.act);if(a&&a.valEnc&&a.valEnc!==me.suc)return;if(ok(c,r))out.push({c,r})})});
   if(ve.size)cfgCols().filter(c=>c.id!==me.id&&!miEquipoSuc(me).some(x=>x.id===c.id)).forEach(c=>{Object.values(S.idx[c.id]||{}).forEach(r=>{if(ve.has(r.act)&&ok(c,r))out.push({c,r})})});return out.sort((a,b)=>String(b.r.at).localeCompare(String(a.r.at)))}
@@ -697,7 +697,17 @@ function vConteos(){
   <div class="tiles"><div class="tile"><span>Conteos</span><b>${L.length}</b></div><div class="tile ${nDif?'bad':'good'}"><span>Con diferencias</span><b>${nDif}</b></div><div class="tile"><span>Por validar</span><b>${L.filter(x=>!x.val).length}</b></div></div>
   ${L.length?`<div class="tbl"><table><thead><tr><th>Fecha</th><th>Formato</th><th>Sucursal</th><th>Responsable</th><th class="n">SIDEM</th><th class="n">Físico</th><th class="n">Diferencia</th><th>Validación</th><th>Formato</th></tr></thead><tbody>
   ${L.map(x=>`<tr class="clk" data-open="${esc(x.cid+'~'+x.r.key)}" tabindex="0"><td>${fCorta(new Date(x.r.at))}</td><td>${x.tipo==='joyeria'?'Joyería':(x.tipo==='piso'?'Piso de venta':esc(x.r.nombre||'Inventario'))}</td><td>${esc(x.r.suc)}</td><td>${esc(x.col?nombreCorto(x.col):'')}</td>${x.tipo==='inventario'?`<td class="n">—</td><td class="n">—</td><td class="n ${x.t.difs?'dif-p':'dif-0'}">${x.t.difs?x.t.difs+' con dif.':'Sin dif.'}</td>`:`<td class="n">${x.t.s}</td><td class="n">${x.t.f}</td><td class="n ${x.t.dif<0?'dif-n':(x.t.dif>0?'dif-p':(x.t.difs?'dif-p':'dif-0'))}">${x.t.dif>0?'+':''}${x.t.dif}${x.t.difs&&!x.t.dif?' (por línea)':''}</td>`}<td>${x.val?`<span class="pill ok">Validado</span>`:'<span class="pill hoy">Por validar</span>'}</td><td><button class="btn sm" type="button" data-pdf="${esc(x.cid+'~'+x.r.key)}">PDF</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No hay conteos registrados en este mes.</div>'}
-  <p class="note">Diferencia = físico − SIDEM. Negativa: faltan prendas o artículos; positiva: hay de más (posible duplicado o error de sistema).</p>`;
+  <p class="note">Diferencia = físico − SIDEM. Negativa: faltan prendas o artículos; positiva: hay de más (posible duplicado o error de sistema).</p>${mgr?reportesCoord(mes):''}`;
+}
+function reportesCoord(mes){
+  const acts=cfgActs().filter(a=>a.valCoord&&a.activo!==false);if(!acts.length)return'';const ids=new Set(acts.map(a=>a.id));
+  let L=[];cfgCols().forEach(c=>Object.values(S.idx[c.id]||{}).forEach(r=>{if(ids.has(r.act)&&hecho(r)&&r.mes===mes)L.push({c,r,val:S.vidx[c.id+'~'+r.key]})}));
+  if(S.fSuc!=='Todas')L=L.filter(x=>(x.r.suc||x.c.suc)===S.fSuc);L.sort((a,b)=>String(b.r.at).localeCompare(String(a.r.at)));
+  const pend=L.filter(x=>!x.val).length;
+  return`<div class="sec-h" style="margin-top:22px"><h2>Reportes por validar</h2><span class="note">${acts.map(a=>esc(a.nombre)).join(' · ')}${pend?` · <b>${pend} pendiente${pend===1?'':'s'}</b>`:''}</span></div>
+  ${L.length?`<div class="tbl"><table><thead><tr><th>Fecha</th><th>Reporte</th><th>Sucursal</th><th>Responsable</th><th>Registrado</th><th class="n">Evidencias</th><th>Validación</th><th>PDF</th></tr></thead><tbody>
+  ${L.map(x=>{const lim=x.r.lim?new Date(x.r.lim):null;const at=new Date(x.r.at);const tarde=lim&&at>lim;const n=((x.r.datos||{}).archivos||[]).length;
+    return`<tr class="clk" data-open="${esc(x.c.id+'~'+x.r.key)}" tabindex="0"><td>${fCorta(lim||at)}</td><td>${esc(x.r.nombre||(actById(x.r.act)||{}).nombre||'')}</td><td>${esc(x.r.suc||x.c.suc||'')}</td><td>${esc(nombreCorto(x.c))}</td><td>${fHora(at)}${tarde?' <span class="pill tarde">Tarde</span>':''}</td><td class="n">${n||'<span class="pill vencida">0</span>'}</td><td>${x.val?`<span class="pill ok">Validado</span> <span class="note">${esc(x.val.nombre||'')}</span>`:'<span class="pill hoy">Por validar</span>'}</td><td><button class="btn sm" type="button" data-pdf="${esc(x.c.id+'~'+x.r.key)}">PDF</button></td></tr>`}).join('')}</tbody></table></div>`:'<div class="card"><p class="note">Sin reportes registrados en este mes.</p></div>'}`;
 }
 
 /* ============ historial ============ */
@@ -812,7 +822,7 @@ function drawModal(){
   else if(!rec&&!ro)body+=`<p>Al guardar confirmas que realizaste esta actividad${inst.porSuc?' para Suc. '+esc(inst.suc):''}.</p>`;
   if(a.adjunto)body+=adjHtml(md,rec,ro);
   body+=`<label class="fl" for="mNota">Comentario${a.tipo==='check'?' (opcional)':''}<textarea class="in" id="mNota" ${dis} placeholder="${ro?'':'Algo que Dirección o la coordinación deba saber'}">${esc(md.nota!=null?md.nota:(rec?rec.nota||'':''))}</textarea></label>`;
-  const puedeVal=hecho(rec)&&!val&&!propio&&(esFormato(a.tipo)?esMgr():(validable(cid,a)&&puedeValidarA(cid,a)));
+  const puedeVal=hecho(rec)&&!val&&!propio&&((esFormato(a.tipo)||a.valCoord)?esMgr():(validable(cid,a)&&puedeValidarA(cid,a)));
   const vInfo=val?`<div class="alerta ok"><b>Validado</b><span>${esc(val.nombre||'')} · ${fCorta(new Date(val.at))} ${fHora(new Date(val.at))}${val.nota?' · '+esc(val.nota):''}</span></div>`:'';
   const col=colById(cid);
   el.innerHTML=`<div class="ov" id="ov"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="mT">
@@ -820,9 +830,9 @@ function drawModal(){
    ${md.recien?`<div class="alerta ok" role="status"><b>Guardado</b><span>${esc(md.recien)} Descarga el formato en PDF para imprimirlo y firmarlo.</span><button class="btn pri" type="button" id="mPdfTop">Descargar formato PDF</button></div>`:''}
    ${vInfo}${body}<div id="modMsg">${msgHtml('mod')}</div>
    <div class="row">${!ro&&a.tipo==='inventario'&&!hecho(rec)?`<button class="btn" type="button" id="mAvance">Guardar avance</button>`:''}${!ro?`<button class="btn pri" type="button" id="mSave">${a.tipo==='inventario'?(hecho(rec)?'Guardar cambios':'Terminar inventario'):(rec?'Guardar cambios':(st==='vencida'?'Registrar tarde':'Registrar'))}</button>`:''}
-   ${puedeVal?`<input class="in" id="vNota" placeholder="Nota de validación (opcional)" style="flex:1;min-width:180px"><button class="btn pri" type="button" id="mVal">${esFormato(a.tipo)?'Validar conteo':'Validar'}</button>`:''}
+   ${puedeVal?`<input class="in" id="vNota" placeholder="Nota de validación (opcional)" style="flex:1;min-width:180px"><button class="btn pri" type="button" id="mVal">${esFormato(a.tipo)?'Validar conteo':(a.valCoord?'Validar reporte':'Validar')}</button>`:''}
    ${a.frec==='dias'&&a.temas?`<button class="btn" type="button" id="mCal">Calendario del mes (PDF)</button>`:''}
-   ${hecho(rec)&&conPdf(a.tipo)?`<button class="btn ${md.recien?'pri':''}" type="button" id="mPdf">Descargar formato PDF</button>`:''}</div>
+   ${hecho(rec)&&(conPdf(a.tipo)||a.adjunto)?`<button class="btn ${md.recien?'pri':''}" type="button" id="mPdf">Descargar formato PDF</button>`:''}</div>
    ${ro&&!propio&&!rec?'<p class="note">Solo la persona responsable puede registrar esta actividad.</p>':''}
    ${bloq?'<p class="note">Este conteo ya fue registrado y no se puede modificar. Si hubo un error, anótalo al validarlo o avisa a Dirección.</p>':(val&&propio&&ro?'<p class="note">El conteo ya fue validado; para corregirlo pide a Dirección que lo ajuste.</p>':'')}
   </div></div>`;
@@ -1072,7 +1082,7 @@ async function guardar(md,parcial){
   if(error){if(b){b.disabled=false;b.textContent='Registrar'}flash('mod','err',errText(error));return}
   upsertLocal(S.rows,row);
   if(parcial){S.modal=null;flash('main','ok',`Avance guardado: ${datos.n} de ${datos.total} renglones. Termina antes del ${fCorta(inst.lim)} ${fHora(inst.lim)}.`);return}
-  const aTiempo=new Date(rec.at)<=inst.lim;const conteo=conPdf(a.tipo);const exa=(a.tipo==='joyeria'||a.tipo==='piso')&&!totConteo(a.tipo,datos).difs;
+  const aTiempo=new Date(rec.at)<=inst.lim;const conteo=conPdf(a.tipo)||!!a.adjunto;const exa=(a.tipo==='joyeria'||a.tipo==='piso')&&!totConteo(a.tipo,datos).difs;
   const txt=hecho(prev)?'Cambios guardados.':`Registro guardado · +${aTiempo?PTS.ok:PTS.tarde} puntos${aTiempo?'':' (tarde)'}${exa?` · +${PTS.exacto} por conteo sin diferencias`:''}.`;
   if(conteo){delete S.msg.mod;S.modal=Object.assign({},md,{recien:txt,redraw:true});$('#modal').dataset.k='';render()}
   else{S.modal=null;flash('main','ok',txt)}
@@ -1109,7 +1119,57 @@ async function guardarArchivo(nombre,doc,k){
   try{const blob=new Blob([doc.output('arraybuffer')],{type:'application/pdf'});const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=nombre;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);flash(k,'ok','Archivo listo: '+nombre)}
   catch(e){flash(k,'err','No se pudo descargar el archivo.')}
 }
-function pdfFormato(cid,rec,tipo,k){return tipo==='inventario'?pdfInventario(cid,rec,k):(tipo==='caja'?pdfCaja(cid,rec,k):pdfConteo(cid,rec,tipo,k))}
+function pdfFormato(cid,rec,tipo,k){const ac=actById(rec.act);if(ac&&ac.adjunto&&!conPdf(tipo))return pdfReporte(cid,rec,ac,k);return tipo==='inventario'?pdfInventario(cid,rec,k):(tipo==='caja'?pdfCaja(cid,rec,k):pdfConteo(cid,rec,tipo,k))}
+async function imgParaPdf(f){
+  const{data,error}=await S.sb.storage.from('evidencias').createSignedUrl(f.path,600);if(error||!data)throw new Error('sin enlace');
+  const resp=await fetch(data.signedUrl);if(!resp.ok)throw new Error('descarga');const blob=await resp.blob();const u=URL.createObjectURL(blob);
+  try{const im=await new Promise((ok,ko)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=()=>ko(new Error('formato'));i.src=u});
+    const M=1400,sc=Math.min(1,M/Math.max(im.naturalWidth,im.naturalHeight));const c=document.createElement('canvas');c.width=Math.round(im.naturalWidth*sc);c.height=Math.round(im.naturalHeight*sc);
+    const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);g.drawImage(im,0,0,c.width,c.height);return{src:c.toDataURL('image/jpeg',0.85),w:c.width,h:c.height}}
+  finally{URL.revokeObjectURL(u)}
+}
+async function pdfReporte(cid,rec,a,k){k=k||'mod';
+  try{flash(k,'ok','Preparando el PDF…');
+  const d=rec.datos||{};const col=colById(cid);const val=S.vidx[cid+'~'+rec.key];const inst=S.inst[cid+'~'+rec.key];
+  const lim=rec.lim?new Date(rec.lim):(inst?inst.lim:null);const at=new Date(rec.at);const aTiempo=lim?at<=lim:true;
+  const doc=pdfNew('p');const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
+  const titulo=a.id==='metas_diario'?'REPORTE DE METAS DEL DÍA':String(a.nombre||'').toUpperCase();
+  let y=pdfHead(doc,titulo,`Suc. ${rec.suc||(col&&col.suc)||''} · ${lim?fLarga(lim):fLarga(at)}`);
+  const sec=(t)=>{doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...AZ);doc.text(t,36,y);y+=6};
+  sec('DATOS DEL REPORTE');
+  AT(doc,{startY:y,theme:'plain',body:[
+    ['Fecha del reporte',lim?fLarga(lim):fLarga(at),'Sucursal',rec.suc||(col&&col.suc)||''],
+    ['Realizó',col?col.nombre:'','Puesto',col?(PUESTOS[col.puesto]||col.puesto):''],
+    ['Hora límite',lim?fHora(lim):'','Registrado en sistema',`${fCorta(at)} ${fHora(at)}`],
+    ['Estado',aTiempo?'Entregado a tiempo':'Entregado tarde','Evidencias',`${(d.archivos||[]).length} archivo(s)`]],
+    styles:{fontSize:9.5,cellPadding:3},columnStyles:{0:{fontStyle:'bold',textColor:GR,cellWidth:105},2:{fontStyle:'bold',textColor:GR,cellWidth:120}},
+    didParseCell:c=>{if(c.section==='body'&&c.row.index===3&&c.column.index===1){c.cell.styles.fontStyle='bold';c.cell.styles.textColor=aTiempo?[29,134,87]:[168,106,16]}}});
+  y=lastY(doc)+18;sec('VALIDACIÓN DE COORDINACIÓN');
+  AT(doc,{startY:y,theme:'plain',body:val?[['Estado','Validado','Validó',val.nombre||''],['Fecha de validación',`${fLarga(new Date(val.at))} ${fHora(new Date(val.at))}`,'Nota de validación',val.nota||'Sin nota']]:[['Estado','Pendiente de validación','','']],
+    styles:{fontSize:9.5,cellPadding:3},columnStyles:{0:{fontStyle:'bold',textColor:GR,cellWidth:105},2:{fontStyle:'bold',textColor:GR,cellWidth:120}},
+    didParseCell:c=>{if(c.section==='body'&&c.row.index===0&&c.column.index===1){c.cell.styles.fontStyle='bold';c.cell.styles.textColor=val?[29,134,87]:[168,106,16]}}});
+  y=lastY(doc)+18;sec('COMENTARIO');doc.setFont('helvetica','normal');doc.setFontSize(9.5);doc.setTextColor(22,35,42);
+  const cm=doc.splitTextToSize(rec.nota||'Sin comentarios.',W-72);doc.text(cm,36,y+10);y+=10+cm.length*12+14;
+  const arch=d.archivos||[];
+  if(arch.length){sec('EVIDENCIAS');doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(22,35,42);
+    arch.forEach((f,i)=>{doc.text(`${i+1}. ${f.nombre} · ${/pdf/.test(f.tipo||'')?'PDF':'Foto'} · subido ${f.at?fCorta(new Date(f.at))+' '+fHora(new Date(f.at)):''}`,36,y+10);y+=13});y+=6}
+  // firmas
+  if(y>H-120){doc.addPage();y=60}
+  y+=44;doc.setDrawColor(...GR);doc.setLineWidth(.6);doc.line(60,y,W/2-30,y);doc.line(W/2+30,y,W-60,y);doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(22,35,42);
+  doc.text(col?col.nombre:'',(60+W/2-30)/2,y-6,{align:'center'});if(val)doc.text(`${val.nombre||''} · ${fCorta(new Date(val.at))}`,(W/2+30+W-60)/2,y-6,{align:'center'});
+  doc.setTextColor(...GR);doc.text('NOMBRE Y FIRMA RESPONSABLE',(60+W/2-30)/2,y+12,{align:'center'});doc.text(val?'VALIDADO EN SISTEMA · COORDINACIÓN OPERATIVA':'VALIDACIÓN COORDINACIÓN OPERATIVA',(W/2+30+W-60)/2,y+12,{align:'center'});
+  // fotos: una por página
+  const fotos=arch.filter(f=>!/pdf/.test(f.tipo||''));const fallas=[];
+  for(const [i,f] of fotos.entries()){try{const im=await imgParaPdf(f);doc.addPage();let yy=pdfHead(doc,'EVIDENCIA FOTOGRÁFICA',`${titulo} · Suc. ${rec.suc||''} · ${lim?fCorta(lim):fCorta(at)}`);
+      doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(...GR);doc.text(`Foto ${i+1} de ${fotos.length}: ${f.nombre}`,36,yy+4);yy+=14;
+      const mw=W-72,mh=H-yy-50;const sc=Math.min(mw/im.w,mh/im.h);const w=im.w*sc,h=im.h*sc;doc.addImage(im.src,'JPEG',(W-w)/2,yy,w,h)}catch(e){fallas.push(f.nombre)}}
+  const pdfs=arch.filter(f=>/pdf/.test(f.tipo||''));
+  pdfFoot(doc);const dd=lim||at;
+  await guardarArchivo(`${a.id==='metas_diario'?'Reporte de metas':a.nombre} ${rec.suc||''} ${iso(dd)}.pdf`.replace(/\s+/g,' '),doc,k);
+  if(fallas.length)flash(k,'err',`PDF listo, pero no se pudo incluir: ${fallas.join(', ')}. Ábrelas con "Ver".`);
+  else if(pdfs.length)flash(k,'ok',`PDF listo. ${pdfs.length===1?'El PDF adjunto':'Los PDF adjuntos'} no se incluye${pdfs.length===1?'':'n'} dentro; ábrelo${pdfs.length===1?'':'s'} con "Ver".`);
+  }catch(e){flash(k,'err','No se pudo generar el PDF: '+e.message)}
+}
 function pdfInventario(cid,rec,k){k=k||'mod';
   try{const d=rec.datos||{};const col=colById(cid);const val=S.vidx[cid+'~'+rec.key];const doc=pdfNew('l');const W=doc.internal.pageSize.getWidth();
   const[y0,m0]=String(rec.mes).split('-').map(Number);
