@@ -164,6 +164,7 @@ td.dif-n{color:var(--bad);font-weight:700}td.dif-p{color:var(--warn);font-weight
 .m-oro{background:var(--amarillo);color:#3a2a00}.m-plata{background:#8f9aa0}.m-bronce{background:#b87333}
 .cj-box{border:1px solid var(--line);border-top:4px solid var(--azul);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--surface)}
 .cj-box .cap td input{min-width:70px}
+.vh{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0;opacity:0}
 .adj{border:1px dashed var(--azul);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:8px;background:var(--azul-soft)}
 .adj-l{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .adj-i{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
@@ -970,17 +971,19 @@ function adjHtml(md,rec,ro){
     ${nuevo?'':`<a class="btn sm" data-adjver="${i}" href="#" target="_blank" rel="noopener">Ver</a>`}${ro?'':`<button class="btn sm dang" type="button" data-adjdel="${nuevo?'n':'k'}${i}">Quitar</button>`}</li>`;
   return`<div class="adj"><div class="row"><b>Evidencia: foto o PDF</b><span class="note">${n} de ${ADJ_MAX}</span></div>
   ${n?`<ul class="adj-l">${keep.map((f,i)=>item(f,i,false)).join('')}${md.files.map((f,i)=>item(f,i,true)).join('')}</ul>`:`<p class="note">${ro?'Sin archivos.':'Toma una foto del formato o sube el PDF. Hasta 3 archivos de 10 MB.'}</p>`}
-  ${!ro&&n<ADJ_MAX?`<label class="btn" for="adjIn" style="width:max-content">Subir foto o PDF</label><input id="adjIn" type="file" accept="image/*,application/pdf" multiple hidden>`:''}</div>`;
+  ${!ro&&n<ADJ_MAX?`<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn" type="button" data-adjpick="adjCam">📷 Tomar foto</button><button class="btn" type="button" data-adjpick="adjIn">Subir foto o PDF</button></div>
+  <input id="adjCam" class="vh" type="file" accept="image/*" capture="environment"><input id="adjIn" class="vh" type="file" accept="image/*,application/pdf" multiple>`:''}</div>`;
 }
 function bindAdj(md,rec,ro){
   const keep=md.keep||((rec&&rec.datos&&rec.datos.archivos)||[]);
   $$('[data-adjver]').forEach(el=>{const f=keep[+el.dataset.adjver];if(!f)return;el.removeAttribute('href');el.textContent='Cargando…';
     S.sb.storage.from('evidencias').createSignedUrl(f.path,3600).then(({data,error})=>{if(error||!data){el.textContent='No disponible';return}el.href=data.signedUrl;el.textContent='Ver'})});
-  const inp=$('#adjIn');if(inp)inp.onchange=async()=>{const fs=[...inp.files];inp.value='';
-    for(const f of fs){if(!/^image\/|application\/pdf/.test(f.type)){flash('mod','err',`"${f.name}" no es foto ni PDF.`);continue}
+  $$('[data-adjpick]').forEach(b=>b.onclick=()=>{const i=$('#'+b.dataset.adjpick);if(i)i.click()});
+  ['#adjIn','#adjCam'].forEach(sel=>{const inp=$(sel);if(inp)inp.onchange=async()=>{const fs=[...inp.files];inp.value='';
+    for(const f of fs){if(!/^image\/|application\/pdf/.test(f.type)&&!/\.(jpe?g|png|webp|heic|heif|pdf)$/i.test(f.name)){flash('mod','err',`"${f.name}" no es foto ni PDF.`);continue}
       if((md.keep||keep).length+md.files.length>=ADJ_MAX){flash('mod','err',`Máximo ${ADJ_MAX} archivos.`);break}
       const c=await comprimir(f);if(c.size>ADJ_BYTES){flash('mod','err',`"${f.name}" pesa más de 10 MB.`);continue}md.files.push(c)}
-    md.nota=($('#mNota')||{}).value;md.redraw=true;render()};
+    md.nota=($('#mNota')||{}).value;md.redraw=true;render()}});
   $$('[data-adjdel]').forEach(el=>el.onclick=()=>{const t=el.dataset.adjdel[0],i=+el.dataset.adjdel.slice(1);if(t==='n')md.files.splice(i,1);else{md.keep=(md.keep||keep.slice());md.keep.splice(i,1)}md.nota=($('#mNota')||{}).value;md.redraw=true;render()});
 }
 async function comprimir(f){
@@ -989,10 +992,11 @@ async function comprimir(f){
     cv.getContext('2d').drawImage(bmp,0,0,cv.width,cv.height);const bl=await new Promise(r=>cv.toBlob(r,'image/jpeg',0.82));if(!bl||bl.size>=f.size)return f;
     return new File([bl],f.name.replace(/\.\w+$/,'')+'.jpg',{type:'image/jpeg'})}catch(e){return f}
 }
+function tipoDe(n){const e=(String(n).split('.').pop()||'').toLowerCase();return e==='pdf'?'application/pdf':e==='png'?'image/png':e==='webp'?'image/webp':e==='heic'?'image/heic':e==='heif'?'image/heif':'image/jpeg'}
 async function subirAdjuntos(cid,key,files){const out=[];
   for(const f of files){const safe=String(f.name).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\w.-]+/g,'_').slice(-60);const path=`${cid}/${key}/${Date.now().toString(36)}_${safe}`;
-    const{error}=await S.sb.storage.from('evidencias').upload(path,f,{contentType:f.type||'application/octet-stream',upsert:false});if(error)throw error;
-    out.push({path,nombre:f.name,tipo:f.type,tam:f.size,at:ahora().toISOString()})}
+    const{error}=await S.sb.storage.from('evidencias').upload(path,f,{contentType:f.type||tipoDe(f.name),upsert:false});if(error)throw error;
+    out.push({path,nombre:f.name,tipo:f.type||tipoDe(f.name),tam:f.size,at:ahora().toISOString()})}
   return out}
 function formConteo(tipo,d,dis,md){
   const J=tipo==='joyeria';const rows=J?JOYAS:PISO;const mot=J?MOT_J:MOT_P;const R=d.rows||{};
