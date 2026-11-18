@@ -176,6 +176,8 @@ td.dif-n{color:var(--bad);font-weight:700}td.dif-p{color:var(--warn);font-weight
 .adj{border:1px dashed var(--azul);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:8px;background:var(--azul-soft)}
 .adj-l{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .adj-i{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+.cj-det{border:1px solid var(--line);border-radius:10px;padding:8px 12px;background:var(--surface)}
+.cj-det summary{cursor:pointer;font-weight:600;color:var(--azul)}
 .adj-prev{flex:1 0 100%;display:block;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden;text-align:center;min-height:60px}
 .adj-prev img{display:block;width:100%;max-height:420px;object-fit:contain;background:#f4f6f8}
 .adj-t{font-size:.72rem;font-weight:700;background:var(--azul);color:#fff;border-radius:5px;padding:2px 6px}
@@ -903,7 +905,7 @@ function formCaja(a,d,dis){
     <tr class="tot"><td>Total físico</td><td></td><td class="n" id="cj_${i}_f">$0.00</td></tr>
     <tr><td><b>Diferencia</b> <span class="note">(físico − sistema)</span></td><td></td><td class="n" id="cj_${i}_d">—</td></tr></tbody></table></div></section>`;
   return`<p class="note">Cuenta cada caja por denominación: cuántos billetes de cada valor; la morralla ($1, $2, $5 y $10) y los vales van en pesos. Lo que no haya déjalo vacío.</p>
-  ${C.map(box).join('')}
+  ${dis?`<details class="cj-det"><summary>Ver desglose de billetes por caja</summary>${C.map(box).join('')}</details>`:C.map(box).join('')}
   <h4>Resumen de cajas</h4>
   <div class="tbl"><table><thead><tr><th>Caja</th><th class="n">Sistema</th><th class="n">Billetes</th><th class="n">Morralla</th><th class="n">Vales</th><th class="n">Físico</th><th class="n">Diferencia</th></tr></thead><tbody>
   ${C.map((c,i)=>`<tr><td><b>${esc(c)}</b></td><td class="n" id="cs_${i}_s">$0.00</td><td class="n" id="cs_${i}_b">$0.00</td><td class="n" id="cs_${i}_m">$0.00</td><td class="n" id="cs_${i}_v">$0.00</td><td class="n" id="cs_${i}_f">$0.00</td><td class="n" id="cs_${i}_d">—</td></tr>`).join('')}
@@ -952,18 +954,13 @@ function pdfCaja(cid,rec,k){k=k||'mod';
   try{const d=rec.datos||{};const col=colById(cid);const doc=pdfNew('p');const W=doc.internal.pageSize.getWidth();const R=d.rows||[];
   let y=pdfHead(doc,'CUADRE DE CAJA',`Suc. ${rec.suc} · ${fLarga(D0(rec.per))}`);
   AT(doc,{startY:y,theme:'plain',body:[['Fecha',fLarga(D0(rec.per)),'Encargado(a) de sucursal',col?col.nombre:''],['Sucursal',rec.suc,'Registrado',`${fCorta(new Date(rec.at))} ${fHora(new Date(rec.at))}`]],styles:{fontSize:9.5,cellPadding:3},columnStyles:{0:{fontStyle:'bold',textColor:GR},2:{fontStyle:'bold',textColor:GR}}});
-  const head=[['Denominación',...R.flatMap(x=>[x.c+' #',x.c+' $'])]];
-  const body=DEN.map(dn=>[m2(dn),...R.flatMap(x=>[x['d'+dn]===''||x['d'+dn]==null?'':String(x['d'+dn]),m2(num(x['d'+dn])*dn)])]);
-  body.push(['Morralla ($1, $2, $5, $10)',...R.flatMap(x=>['',m2(x.mor)])]);
-  body.push(['Vales',...R.flatMap(x=>['',m2(x.val)])]);
-  const nb=body.length;
-  body.push(['TOTAL FÍSICO',...R.flatMap(x=>['',m2(calcCaja(x).fis)])]);
-  body.push(['Debe tener (sistema)',...R.flatMap(x=>['',m2(x.sis)])]);
-  body.push(['Diferencia',...R.flatMap(x=>['',sm(calcCaja(x).dif)])]);
-  const cs={};for(let j=1;j<=R.length*2;j++)cs[j]={halign:'right'};
-  AT(doc,{startY:lastY(doc)+10,head,body,styles:{fontSize:8.5,cellPadding:3,textColor:[22,35,42],lineColor:[215,225,230],lineWidth:0.5},columnStyles:cs,
-    didParseCell:c=>{if(c.section!=='body')return;if(c.row.index===nb){c.cell.styles.fontStyle='bold';c.cell.styles.fillColor=[255,241,204]}
-      if(c.row.index===nb+2&&c.column.index>0){const v=String(c.cell.raw||'');c.cell.styles.fontStyle='bold';if(v.startsWith('-'))c.cell.styles.textColor=[192,64,44];else if(v.startsWith('+'))c.cell.styles.textColor=[168,106,16]}}});
+  const C=R.map(x=>({x,c:calcCaja(x)}));const T=totCaja(R);
+  const body=C.map(({x,c})=>[x.c||'',m2(x.sis),m2(c.bil),m2(x.mor),m2(x.val),m2(c.fis),sm(c.dif)]);
+  body.push(['Totales',m2(T.sis),m2(T.bil),m2(T.mor),m2(T.val),m2(T.fis),sm(T.dif)]);const nb=body.length-1;
+  AT(doc,{startY:lastY(doc)+16,head:[['Caja','Sistema','Billetes','Morralla','Vales','Físico','Diferencia']],body,styles:{fontSize:9.5,cellPadding:5,textColor:[22,35,42],lineColor:[215,225,230],lineWidth:0.5},
+    columnStyles:{0:{fontStyle:'bold'},1:{halign:'right'},2:{halign:'right'},3:{halign:'right'},4:{halign:'right'},5:{halign:'right'},6:{halign:'right',fontStyle:'bold'}},
+    didParseCell:c=>{if(c.section==='head'&&c.column.index>0)c.cell.styles.halign='right';if(c.section!=='body')return;if(c.row.index===nb){c.cell.styles.fontStyle='bold';c.cell.styles.fillColor=[255,241,204]}
+      if(c.column.index===6){const v=String(c.cell.raw||'');c.cell.styles.textColor=v.startsWith('-')?[192,64,44]:(v.startsWith('+')?[168,106,16]:[29,134,87])}}});
   const t=totCaja(R);
   y=lastY(doc)+16;doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...(t.dif===0?[29,134,87]:[192,64,44]));
   doc.text(t.dif===0?`LAS CAJAS CUADRAN · TOTAL FÍSICO ${m2(t.fis)}`:`${t.dif>0?'SOBRANTE':'FALTANTE'}: ${m2(Math.abs(t.dif))} · físico ${m2(t.fis)} vs sistema ${m2(t.sis)}`,36,y);
