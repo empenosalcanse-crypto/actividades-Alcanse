@@ -35,6 +35,7 @@
   --good:#4fc78f; --good-soft:#163628; --bad:#f07c66; --bad-soft:#3d1f1a; --warn:#f2b552; --warn-soft:#3a2c14; color-scheme:dark;}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
+.hora-auto{background:var(--surface-2,#eef2f5);font-weight:600;display:flex;align-items:center;min-height:42px;cursor:default}
 .inst{background:#fff;border-bottom:1px solid var(--line);box-shadow:0 2px 8px rgba(0,0,0,.05)}
 .inst-in{max-width:1040px;margin:0 auto;padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .inst-in img{border-radius:10px;flex:none}
@@ -90,7 +91,7 @@ footer{max-width:1040px;margin:0 auto;padding:0 16px 28px;color:var(--muted);fon
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .sel,input.in,textarea.in{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 10px;min-height:40px;width:100%}
 textarea.in{min-height:70px;resize:vertical}
-label.fl{display:flex;flex-direction:column;gap:4px;font-size:.85rem;font-weight:600;color:var(--ink-2)}
+label.fl,div.fl{display:flex;flex-direction:column;gap:4px;font-size:.85rem;font-weight:600;color:var(--ink-2)}
 
 .alerta{border-radius:var(--r);padding:12px 14px;display:flex;gap:12px;align-items:center;border:1px solid}
 .alerta.bad{background:var(--bad-soft);border-color:var(--bad);color:var(--ink)}
@@ -1012,8 +1013,9 @@ function formConteo(tipo,d,dis,md){
   const head=J?'<th>Tipo de prenda</th><th class="n">SIDEM</th><th class="n">Plata</th><th class="n">Oro</th><th class="n">Diferencia</th><th>Motivo de diferencia</th>'
     :'<th>Línea</th><th class="n">SIDEM</th><th class="n">Físicos</th><th class="n">Diferencia</th><th>Motivo de diferencia</th>';
   const inp=(k,f)=>`<input id="q_${k}_${f}" inputmode="numeric" value="${esc((R[k]||{})[f]??'')}" ${dis} aria-label="${f}">`;
-  return`<div class="fgrid"><label class="fl" for="qHi">Hora de inicio del conteo<input class="in" type="time" id="qHi" value="${esc(d.hi||md.ini)}" ${dis}></label>
-   ${J?`<label class="fl" for="qHf">Hora final del conteo<input class="in" type="time" id="qHf" value="${esc(d.hf||'')}" ${dis} placeholder="Se llena al guardar"></label>`:''}</div>
+  return`<div class="fgrid"><div class="fl"><span>Hora de inicio del conteo</span><div class="in hora-auto" id="qHi">${esc(d.hi||md.ini)}</div></div>
+   <div class="fl"><span>Hora final del conteo</span><div class="in hora-auto" id="qHf">${d.hf?esc(d.hf):'<span class="note">Se registra al guardar</span>'}</div></div></div>
+   <p class="note">Las horas se toman solas: el inicio al abrir el formato y el final al guardar el conteo.</p>
    <p class="note hint-scroll">Desliza la tabla a la izquierda para ver diferencia y motivo.</p>
    <div class="tbl cap"><table><thead><tr>${head}</tr></thead><tbody>
    ${rows.map(([k,l])=>`<tr><td><b>${l}</b></td><td>${inp(k,'s')}</td>${J?`<td>${inp(k,'p')}</td><td>${inp(k,'o')}</td>`:`<td>${inp(k,'f')}</td>`}<td class="n" id="q_${k}_d">—</td>
@@ -1023,8 +1025,7 @@ function formConteo(tipo,d,dis,md){
    <p class="slogan">"Organizar tu inventario, optimizará tu éxito"</p>`;
 }
 function leerConteo(tipo){
-  const J=tipo==='joyeria';const rows=J?JOYAS:PISO;const out={rows:{},hi:$('#qHi').value,obs:$('#qObs').value.trim()};
-  if(J)out.hf=$('#qHf').value;
+  const J=tipo==='joyeria';const rows=J?JOYAS:PISO;const out={rows:{},hi:(S.modal&&S.modal.ini)||fHora(ahora()),obs:$('#qObs').value.trim()};
   rows.forEach(([k])=>{const g=f=>{const v=$(`#q_${k}_${f}`).value.trim();return v===''?'':num(v)};const x={s:g('s'),m:$(`#q_${k}_m`).value};if(J){x.p=g('p');x.o=g('o')}else x.f=g('f');out.rows[k]=x});
   return out;
 }
@@ -1045,7 +1046,7 @@ async function guardar(md,parcial){
     if(vacios===Object.keys(datos.rows).length){flash('mod','err','Captura al menos una línea del conteo (SIDEM y físico). Pon 0 donde no haya.');md.redraw=false;return}
     const sinMot=Object.entries(datos.rows).filter(([k,x])=>x.s!==''&&((a.tipo==='joyeria'?num(x.p)+num(x.o):num(x.f))-num(x.s))!==0&&!x.m).length;
     if(sinMot){flash('mod','err',`Hay ${sinMot} ${sinMot===1?'línea':'líneas'} con diferencia sin motivo. Elige el motivo.`);return}
-    if(a.tipo==='joyeria'&&!datos.hf)datos.hf=fHora(now);}
+    datos.hf=fHora(now);}
   else if(a.tipo==='caja'){datos=leerCaja(a);
     const vac=datos.rows.filter(x=>x.sis==='');if(vac.length){flash('mod','err',`Falta capturar lo que debe tener según sistema en: ${vac.map(x=>x.c).join(', ')}. Pon 0 si no tiene.`);return}
     if(datos.dif!==0&&!datos.obs){flash('mod','err',`La caja no cuadra (${datos.dif>0?'sobrante':'faltante'} de ${m2(Math.abs(datos.dif))}). Explica el motivo en Observaciones.`);return}}
@@ -1128,7 +1129,7 @@ function pdfConteo(cid,rec,tipo,k){k=k||'mod';
   try{const J=tipo==='joyeria';const d=rec.datos||{};const col=colById(cid);const val=S.vidx[cid+'~'+rec.key];
   const doc=pdfNew('p');const W=doc.internal.pageSize.getWidth();
   let y=pdfHead(doc,J?'CONTEO DIARIO DE JOYERÍA ALMACÉN VENTA':'CONTEO PISO DE VENTA',`Suc. ${rec.suc} · ${fLarga(new Date(rec.at))}`);
-  AT(doc,{startY:y,theme:'plain',body:[['Fecha de conteo',fLarga(new Date(rec.at)),'Encargado(a) de sucursal',col?col.nombre:''],['Sucursal de conteo',rec.suc,'Hora inicio del conteo',d.hi||''],...(J?[['Hora final del conteo',d.hf||'','','']]:[])],styles:{fontSize:9.5,cellPadding:3},columnStyles:{0:{fontStyle:'bold',textColor:GR},2:{fontStyle:'bold',textColor:GR}}});
+  AT(doc,{startY:y,theme:'plain',body:[['Fecha de conteo',fLarga(new Date(rec.at)),'Encargado(a) de sucursal',col?col.nombre:''],['Sucursal de conteo',rec.suc,'Hora inicio del conteo',d.hi||''],['','','Hora final del conteo',d.hf||'']],styles:{fontSize:9.5,cellPadding:3},columnStyles:{0:{fontStyle:'bold',textColor:GR},2:{fontStyle:'bold',textColor:GR}}});
   const rows=(J?JOYAS:PISO).map(([k,l])=>{const x=(d.rows||{})[k]||{};const s=num(x.s),f=J?num(x.p)+num(x.o):num(x.f);const dif=f-s;return J?[l.toUpperCase(),x.s,x.p,x.o,(dif>0?'+':'')+dif,x.m||'']:[l.toUpperCase(),x.s,x.f,(dif>0?'+':'')+dif,x.m||'']});
   const t=totConteo(tipo,d);
   const tot=J?['TOTALES',t.s,t.p,t.o,(t.dif>0?'+':'')+t.dif,'']:['TOTALES',t.s,t.f,(t.dif>0?'+':'')+t.dif,''];
