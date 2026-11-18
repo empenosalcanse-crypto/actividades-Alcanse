@@ -827,7 +827,7 @@ function drawModal(){
       return`<article class="act st-${x?(x.val?'ok':'hoy'):'vencida'}"><div class="act-main"><h4>${n} · Suc. ${esc(inst.suc)}</h4><p class="meta">${x?`Registrado por ${esc(nombreCorto(colById(x.cid)))} ${fHora(new Date(x.r.at))}`:'La sucursal no lo ha registrado'}</p></div>
       <div class="act-side"><span class="pill ${x?(x.val?'ok':'hoy'):'vencida'}">${x?(x.val?'Validado':'Por validar'):'Sin conteo'}</span>${x?`<button class="btn sm" type="button" data-open2="${esc(x.cid+'~'+x.r.key)}">Abrir</button>`:''}</div></article>`}).join('')}</div>
     <p class="note">Esta actividad se marca sola cuando validas los dos conteos. Si la sucursal no hizo algún conteo, regístrala con un comentario explicando qué pasó.</p>`}
-  else if(a.tipo==='campos')body+=`<div class="fgrid">${(a.campos||[]).map(c=>`<label class="fl" for="cp_${c.k}">${esc(c.l)}${c.t==='money'?' ($)':''}${c.t==='txt'?`<textarea class="in" id="cp_${c.k}" ${dis}>${esc(d[c.k]||'')}</textarea>`:`<input class="in" id="cp_${c.k}" inputmode="decimal" value="${esc(d[c.k]??'')}" ${dis}>`}</label>`).join('')}</div>${a.lista?listaHtml(a,d,dis):''}`;
+  else if(a.tipo==='campos')body+=`<div class="fgrid">${(a.campos||[]).map(c=>`<label class="fl" for="cp_${c.k}">${esc(c.l)}${c.t==='money'?' ($)':''}${c.t==='txt'?`<textarea class="in" id="cp_${c.k}" ${dis}>${esc(d[c.k]||'')}</textarea>`:`<input class="in" id="cp_${c.k}" inputmode="decimal" value="${esc(d[c.k]??'')}" ${dis}>`}</label>`).join('')}${a.pct?`<div class="fl"><span>${esc(a.pct.l||'% de productividad')}</span><div class="in hora-auto pct-box" id="cpPct">${pctTxt(a,d)}</div></div>`:''}</div>${a.pct?`<p class="note">${esc(a.pct.nota||'')}</p>`:''}${a.lista?listaHtml(a,d,dis):''}`;
   else if(!rec&&!ro)body+=`<p>Al guardar confirmas que realizaste esta actividad${inst.porSuc?' para Suc. '+esc(inst.suc):''}.</p>`;
   if(a.adjunto)body+=adjHtml(md,rec,ro);
   body+=`<label class="fl" for="mNota">Comentario${a.tipo==='check'?' (opcional)':''}<textarea class="in" id="mNota" ${dis} placeholder="${ro?'':'Algo que Dirección o la coordinación deba saber'}">${esc(md.nota!=null?md.nota:(rec?rec.nota||'':''))}</textarea></label>`;
@@ -851,6 +851,7 @@ function drawModal(){
   if(a.tipo==='inventario')bindInv(a,inst);
   if(a.tipo==='caja')bindCaja(a);
   if(a.tipo==='campos'&&a.lista)bindLista(a);
+  if(a.tipo==='campos'&&a.pct){const up=()=>{const o={};(a.campos||[]).forEach(c=>{o[c.k]=($('#cp_'+c.k)||{}).value});const b=$('#cpPct');if(b)b.innerHTML=pctTxt(a,o)};(a.campos||[]).forEach(c=>{const i=$('#cp_'+c.k);if(i)i.addEventListener('input',up)})}
   const sv=$('#mSave');if(sv)sv.onclick=()=>guardar(md);
   const av=$('#mAvance');if(av)av.onclick=()=>guardar(md,true);
   const vb=$('#mVal');if(vb)vb.onclick=()=>validar(md,rec);
@@ -1057,6 +1058,7 @@ async function guardar(md,parcial){
     datos.parcial=!!parcial;}
   else if(a.tipo==='campos'){(a.campos||[]).forEach(c=>{const v=($('#cp_'+c.k)||{}).value;datos[c.k]=c.t==='txt'?String(v||'').trim():(String(v||'').trim()===''?'':num(v))});
     const falta=(a.campos||[]).filter(c=>c.t!=='txt'&&datos[c.k]==='');if(falta.length){flash('mod','err','Falta capturar: '+falta.map(c=>c.l).join(', ')+'.');return}
+    if(a.pct){const v=pctVal(a,datos);if(v!=null)datos.pct=v}
     if(a.lista){const L=leerLista(a);const inc=L.filter(r=>!String(r[a.lista.cols[0].k]||'').trim());if(inc.length){flash('mod','err',`Hay ${inc.length} ${inc.length===1?'renglón':'renglones'} con datos pero sin ${a.lista.cols[0].l.toLowerCase()}.`);return}datos.lista=L}}
   const nota=$('#mNota').value.trim();
   if(a.tipo==='validar'&&!nota){flash('mod','err','Escribe un comentario: qué conteo faltó o por qué no se validó.');return}
@@ -1109,6 +1111,8 @@ async function guardarArchivo(nombre,doc,k){
   catch(e){flash(k,'err','No se pudo descargar el archivo.')}
 }
 function pdfFormato(cid,rec,tipo,k){const a=actById(rec.act)||{id:rec.act,nombre:rec.nombre||'Actividad',tipo:tipo||rec.tipo||'check'};return pdfActividad(cid,rec,a,k)}
+function pctVal(a,d){const p=a.pct;if(!p)return null;const n=num(d[p.num]),den=num(d[p.den]);if(String(d[p.den]??'').trim()===''||!den)return null;return Math.round(n/den*1000)/10}
+function pctTxt(a,d){const v=pctVal(a,d);if(v==null)return'<span class="note">Se calcula al capturar</span>';const c=v>=(a.pct.meta||0)?'var(--good)':'var(--warn)';return`<b style="color:${c}">${v.toLocaleString('es-MX')}%</b>`}
 function quienValida(cid,a){if(esFormato(a.tipo)||a.valCoord)return'coord';if(validable(cid,a))return'enc';return null}
 async function pdfActividad(cid,rec,a,k){k=k||'mod';
   try{const t=a.tipo||rec.tipo||'check';const d=rec.datos||{};const col=colById(cid);const val=S.vidx[cid+'~'+rec.key];const inst=S.inst[cid+'~'+rec.key];
@@ -1160,7 +1164,7 @@ async function pdfActividad(cid,rec,a,k){k=k||'mod';
     const ti=totInv(d);doc.setFont('helvetica','bold');doc.setFontSize(9.5);doc.setTextColor(...GR);doc.text(`RESUMEN: ${ti.n} de ${d.total||rows.length} capturados · ${ti.cerr} cerrados · ${ti.difs} con diferencia`,36,y);y+=18;
     texto('OBSERVACIONES',d.obs||'Sin observaciones.')}
   else if(t==='campos'){const cs=(a.campos||[]);if(cs.length){sec('DATOS CAPTURADOS');
-      tabla({theme:'grid',body:cs.map(c=>[c.l,c.t==='money'?m2(d[c.k]):(d[c.k]===''||d[c.k]==null?'—':String(d[c.k]))]),columnStyles:{0:{fontStyle:'bold',textColor:GR,cellWidth:220}}})}
+      const pv=a.pct?pctVal(a,d):null;tabla({theme:'grid',body:[...cs.map(c=>[c.l,c.t==='money'?m2(d[c.k]):(d[c.k]===''||d[c.k]==null?'—':String(d[c.k]))]),...(a.pct?[[a.pct.l||'% de productividad',pv==null?'—':pv.toLocaleString('es-MX')+'%']]:[])],columnStyles:{0:{fontStyle:'bold',textColor:GR,cellWidth:220}},didParseCell:c=>{if(a.pct&&c.section==='body'&&c.row.index===cs.length){c.cell.styles.fontStyle='bold';c.cell.styles.fillColor=[255,241,204]}}})}
     if(a.lista){const L=(d.lista||[]).filter(r=>r&&Object.values(r).some(v=>String(v??'').trim()!==''));const lc=a.lista.cols||[];sec(String(a.lista.titulo||'Lista').toUpperCase());
       tabla({head:[['#',...lc.map(c=>c.l)]],body:L.length?L.map((r,i)=>[i+1,...lc.map(c=>c.t==='money'?m2(r[c.k]):(r[c.k]??''))]):[['','Sin registros',...lc.slice(1).map(()=>'')]],
         columnStyles:Object.assign({0:{halign:'right',cellWidth:22}},...lc.map((c,i)=>c.t!=='txt'?{[i+1]:{halign:'right'}}:{}))})}}
