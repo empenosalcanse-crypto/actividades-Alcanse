@@ -791,11 +791,12 @@ function drawModal(){
   md.redraw=false;el.dataset.k=md.k;
   const{inst,cid}=md;const a=inst.act;const rec=(S.idx[cid]||{})[inst.key];const me=meCol();
   const val=S.vidx[cid+'~'+inst.key];
-  const propio=me&&me.id===cid;const ro=!propio||(val&&!S.admin);
+  const propio=me&&me.id===cid;const bloq=(a.tipo==='joyeria'||a.tipo==='piso')&&hecho(rec);const ro=!propio||bloq||(val&&!S.admin);
   const st=estado(inst,rec,ahora());const d=(rec&&rec.datos)||{};
   const dis=ro?'disabled':'';
   let body='';
   if(a.desc)body+=`<p class="lede">${esc(a.desc)}</p>`;
+  if((a.tipo==='joyeria'||a.tipo==='piso')&&!rec&&propio)body+=`<div class="alerta" role="note"><b>Revisa antes de guardar</b><span>Una vez registrado, el conteo ya no se puede modificar.</span></div>`;
   if(a.tipo==='joyeria'||a.tipo==='piso')body+=formConteo(a.tipo,d,dis,md);
   else if(a.tipo==='inventario')body+=formInv(a,inst,d,dis,md);
   else if(a.tipo==='caja')body+=formCaja(a,d,dis);
@@ -820,7 +821,7 @@ function drawModal(){
    ${a.frec==='dias'&&a.temas?`<button class="btn" type="button" id="mCal">Calendario del mes (PDF)</button>`:''}
    ${hecho(rec)&&conPdf(a.tipo)?`<button class="btn ${md.recien?'pri':''}" type="button" id="mPdf">Descargar formato PDF</button>`:''}</div>
    ${ro&&!propio&&!rec?'<p class="note">Solo la persona responsable puede registrar esta actividad.</p>':''}
-   ${val&&propio&&ro?'<p class="note">El conteo ya fue validado; para corregirlo pide a Dirección que lo ajuste.</p>':''}
+   ${bloq?'<p class="note">Este conteo ya fue registrado y no se puede modificar. Si hubo un error, anótalo al validarlo o avisa a Dirección.</p>':(val&&propio&&ro?'<p class="note">El conteo ya fue validado; para corregirlo pide a Dirección que lo ajuste.</p>':'')}
   </div></div>`;
   $('#mX').onclick=cerrar;$('#ov').onclick=e=>{if(e.target.id==='ov')cerrar()};
   document.onkeydown=e=>{if(e.key==='Escape'&&S.modal)cerrar()};
