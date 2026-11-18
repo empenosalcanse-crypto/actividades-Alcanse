@@ -419,7 +419,7 @@ function draw(){
   if(!S.sb){$('#who').innerHTML='';$('#tabs').innerHTML='';M.innerHTML=`<div class="card"><h3>Sin conexión</h3><p class="lede">${esc(S.sync[1])}</p></div>`;drawModal();return}
   if(!S.session){$('#who').innerHTML='';$('#tabs').innerHTML='';document.title='Actividades Alcanse';M.innerHTML=vLogin();bindLogin();drawModal();return}
   if(!S.cfgLoaded){M.innerHTML=`<div class="card"><p class="lede">Cargando actividades…</p></div>`;drawModal();return}
-  const cuenta=`<span class="row" style="gap:6px;justify-content:flex-end"><button class="btn sm" type="button" id="btnPass">Mi contraseña</button><button class="btn sm" type="button" id="btnSalir">Salir</button></span>`;
+  const cuenta=`<span class="row" style="gap:6px;justify-content:flex-end"><button class="btn sm" type="button" id="btnPass">Mi contraseña</button><button class="btn sm" type="button" id="btnSalir">Salir · cambiar usuario</button></span>`;
   if(!S.perfil||!S.perfil.activo){$('#tabs').innerHTML='';$('#who').innerHTML=cuenta;M.innerHTML=`<div class="card"><h3>Tu usuario no tiene acceso</h3><p class="lede">Tu usuario no está dado de alta o fue desactivado. Habla con Dirección.</p></div>`;bindCuenta();drawModal();return}
   const me=meCol();const mgr=esMgr();
   const T=tabsDisponibles();const h=(location.hash||'').slice(1);
@@ -459,7 +459,11 @@ function bindLogin(){const f=$('#fLogin');if(!f)return;const lm=t=>{$('#lgMsg').
   const{error}=await S.sb.auth.signInWithPassword({email:u+DOM,password:p});
   if(error){b.disabled=false;b.textContent='Entrar';lm(errText(error))}}}
 function bindCuenta(){
-  const s=$('#btnSalir');if(s)s.onclick=async()=>{await S.sb.auth.signOut();location.hash=''};
+  const s=$('#btnSalir');if(s)s.onclick=async()=>{s.disabled=true;s.textContent='Saliendo…';
+    try{await Promise.race([S.sb.auth.signOut({scope:'local'}),new Promise(r=>setTimeout(r,3000))])}catch(e){}
+    try{Object.keys(localStorage).filter(k=>/^sb-.*-auth-token/.test(k)).forEach(k=>localStorage.removeItem(k))}catch(e){}
+    S.session=null;S.modal=null;limpiar();if(location.hash)history.replaceState(null,'',location.pathname+location.search);render();
+    setTimeout(()=>{const u=$('#lgU');if(u){u.value='';u.focus()}const pw=$('#lgP');if(pw)pw.value=''},50)};
   const p=$('#btnPass');if(p)p.onclick=()=>{S.modal={k:'__pass',pass:true};render()};
 }
 function drawPass(el){
