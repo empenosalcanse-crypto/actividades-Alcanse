@@ -215,6 +215,7 @@ const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','
 const JOYAS=[['anillo','Anillo'],['aretes','Aretes'],['cadena','Cadena'],['dijes','Dijes'],['juegos','Juegos'],['monedas','Monedas'],['otros','Otros'],['pulseras','Pulseras']];
 const PISO=[['tec','Tecnología'],['lb','Línea blanca'],['her','Herramientas'],['maq','Maquinaria industrial'],['veh','Vehículos']];
 const MOT_J=['Faltante en inventario','Duplicado','Error de sistema'];
+const HORA_MAX='18:00';
 const MOT_P=['Faltante','Duplicado','Apartado'];
 const TIPOS={check:'Confirmar que se hizo',campos:'Con datos a capturar',joyeria:'Formato: conteo diario de joyería',piso:'Formato: conteo piso de venta',validar:'Validar conteos (se marca sola)',inventario:'Formato: inventario de almacenes',caja:'Formato: cuadre de caja'};
 const ST_L={ok:'Hecha',tarde:'Hecha tarde',vencida:'Vencida',hoy:'Pendiente hoy',abierta:'Pendiente',futura:'Próxima'};
@@ -721,12 +722,12 @@ function vCatalogo(){
     :(a.frec==='mensual'?`<input class="in" data-ca="${i}" data-f="dia" inputmode="numeric" value="${esc(a.dia||'')}" placeholder="día" style="width:70px">`:'<span class="note">—</span>');
   return`<div class="sec-h"><h2>Funciones y equipo</h2><span class="note">Solo Dirección y editores pueden cambiar esto</span></div>
   <div class="card cat"><div class="row"><h3 style="flex:1">Actividades por puesto</h3><button class="btn sm" type="button" id="addAct">Agregar actividad</button><button class="btn pri" type="button" id="saveCat">Guardar actividades</button></div>${msgHtml('cat')}
-  <p class="note">Límite: diario = hora del día; semanal = día y hora; quincenal = días 15 y último del mes; mensual = día del mes y hora. Las actividades "por sucursal" se registran una vez por cada sucursal.</p>
+  <p class="note">Horario máximo: 6:00 p. m. Límite: diario = hora del día; semanal = día y hora; quincenal = días 15 y último del mes; mensual = día del mes y hora. Las actividades "por sucursal" se registran una vez por cada sucursal.</p>
   <div class="tbl"><table><thead><tr><th>Actividad</th><th>Puestos</th><th>Frecuencia</th><th>Día</th><th>Hora</th><th>Tipo</th><th>Por sucursal</th><th>Activa</th></tr></thead><tbody>
   ${A.map((a,i)=>`<tr><td style="min-width:230px"><input class="in" data-ca="${i}" data-f="nombre" value="${esc(a.nombre)}" aria-label="Nombre de la actividad"><input class="in" data-ca="${i}" data-f="desc" value="${esc(a.desc||'')}" placeholder="Descripción o instrucción" style="margin-top:4px" aria-label="Descripción">${a.tipo==='caja'?`<label class="fl" style="margin-top:4px">Cajas (una por renglón)<textarea class="in" data-ca="${i}" data-f="cajas" rows="3">${esc((a.cajas||[]).join('\n'))}</textarea></label>`:''}${a.tipo==='inventario'?SUCS.map(su=>`<label class="fl" style="margin-top:4px">Almacenes ${su} (uno por renglón: Almacén | Línea | Sublínea | Tipo de prenda | Semana)<textarea class="in" data-ca="${i}" data-f="filas" data-suc="${su}" rows="4">${esc(((a.filas||{})[su]||[]).map(r=>[r.l,r.lin||'Todos',r.sub||'Todos',r.pr||'N/A',r.sem||''].join(' | ')).join('\n'))}</textarea></label>`).join(''):''}${a.tipo==='campos'?`<input class="in" data-ca="${i}" data-f="campos" value="${esc((a.campos||[]).map(c=>c.l+(c.t==='num'?' #':c.t==='money'?' $':'')).join(', '))}" placeholder="Datos: Clientes llamados #, Diferencia $, Observaciones" style="margin-top:4px" aria-label="Datos a capturar">`:''}</td>
     <td style="min-width:220px">${pChk(a,i)}</td>
     <td><select class="sel" data-ca="${i}" data-f="frec">${Object.entries(FREC).map(([k,l])=>`<option value="${k}" ${a.frec===k?'selected':''}>${l}</option>`).join('')}</select></td>
-    <td>${diaSel(a,i)}</td><td><input class="in" type="time" data-ca="${i}" data-f="hora" value="${esc(a.hora||'')}" style="width:110px"></td>
+    <td>${diaSel(a,i)}</td><td><input class="in" type="time" data-ca="${i}" data-f="hora" max="18:00" value="${esc(a.hora||'')}" style="width:110px"></td>
     <td><select class="sel" data-ca="${i}" data-f="tipo">${Object.entries(TIPOS).map(([k,l])=>`<option value="${k}" ${a.tipo===k?'selected':''}>${l}</option>`).join('')}</select></td>
     <td><input type="checkbox" data-ca="${i}" data-f="porSuc" ${a.porSuc?'checked':''} aria-label="Por sucursal"></td>
     <td><input type="checkbox" data-ca="${i}" data-f="activo" ${a.activo!==false?'checked':''} aria-label="Activa"></td></tr>`).join('')}</tbody></table></div>
@@ -746,6 +747,7 @@ function bindCatalogo(){
   $$('[data-ca]').forEach(el=>{const ev=el.type==='checkbox'||el.tagName==='SELECT'?'change':'input';el.addEventListener(ev,()=>{const a=S.draftCat[+el.dataset.ca];const f=el.dataset.f;
     if(f==='dias'){const s=new Set((a.dias||[]).map(Number));el.checked?s.add(+el.value):s.delete(+el.value);a.dias=[...s]}
     else if(f==='puesto'){const s=new Set(a.puestos||[]);el.checked?s.add(el.value):s.delete(el.value);a.puestos=[...s]}
+    else if(f==='hora'){if(el.value&&el.value>HORA_MAX){el.value=HORA_MAX;flash('cat','err','El horario máximo de las actividades es a las 6:00 p. m.')}a.hora=el.value}
     else if(f==='porSuc'||f==='activo')a[f]=el.checked;
     else if(f==='campos')a.campos=parseCampos(el.value);
     else if(f==='cajas')a.cajas=String(el.value).split('\n').map(x=>x.trim()).filter(Boolean);
