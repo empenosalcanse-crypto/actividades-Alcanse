@@ -808,12 +808,13 @@ function drawModal(){
   md.redraw=false;el.dataset.k=md.k;
   const{inst,cid}=md;const a=inst.act;const rec=(S.idx[cid]||{})[inst.key];const me=meCol();
   const val=S.vidx[cid+'~'+inst.key];
-  const propio=me&&me.id===cid;const bloq=(a.tipo==='joyeria'||a.tipo==='piso')&&hecho(rec);const ro=!propio||bloq||(val&&!S.admin);
+  const propio=me&&me.id===cid;const bloq=hecho(rec)&&!S.admin;const puedeEd=S.admin?(propio||hecho(rec)):(propio&&!hecho(rec)&&!val);const ro=!puedeEd;const edAdmin=S.admin&&!propio&&hecho(rec);
   const st=estado(inst,rec,ahora());const d=(rec&&rec.datos)||{};
   const dis=ro?'disabled':'';
   let body='';
   if(a.desc)body+=`<p class="lede">${esc(a.desc)}</p>`;
-  if((a.tipo==='joyeria'||a.tipo==='piso')&&!rec&&propio)body+=`<div class="alerta" role="note"><b>Revisa antes de guardar</b><span>Una vez registrado, el conteo ya no se puede modificar.</span></div>`;
+  if(!hecho(rec)&&propio&&!S.admin&&a.tipo!=='validar')body+=`<div class="alerta" role="note"><b>Revisa antes de guardar</b><span>${a.tipo==='inventario'?'Puedes guardar avance las veces que necesites; al terminar el inventario ya no se puede modificar.':'Una vez registrada, esta actividad ya no se puede modificar.'}</span></div>`;
+  if(edAdmin)body+=`<div class="alerta" role="note"><b>Edición de Dirección</b><span>Solo Dirección puede corregir un registro ya entregado. El cambio queda anotado en el registro.</span></div>`;
   if(a.tipo==='joyeria'||a.tipo==='piso')body+=formConteo(a.tipo,d,dis,md);
   else if(a.tipo==='inventario')body+=formInv(a,inst,d,dis,md);
   else if(a.tipo==='caja')body+=formCaja(a,d,dis);
@@ -830,7 +831,7 @@ function drawModal(){
   const vInfo=val?`<div class="alerta ok"><b>Validado</b><span>${esc(val.nombre||'')} · ${fCorta(new Date(val.at))} ${fHora(new Date(val.at))}${val.nota?' · '+esc(val.nota):''}</span></div>`:'';
   const col=colById(cid);
   el.innerHTML=`<div class="ov" id="ov"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="mT">
-   <div class="sheet-h"><div><h3 id="mT">${esc(a.nombre)}${inst.porSuc?' · Suc. '+esc(inst.suc):''}</h3><p class="meta">${temaDe(a,inst.lim)?`<span class="chip" style="background:var(--amarillo-soft);border-color:var(--amarillo);color:var(--ink)">${esc(temaDe(a,inst.lim))}</span>`:''}<span class="pill ${st}">${ST_L[st]}</span><span>Límite ${fCorta(inst.lim)} ${fHora(inst.lim)}</span>${col&&!propio?`<span>${esc(col.nombre)}</span>`:''}${rec?`<span>Registrada ${fCorta(new Date(rec.at))} ${fHora(new Date(rec.at))}</span>`:''}</p></div><button class="btn sm" type="button" id="mX" aria-label="Cerrar">Cerrar</button></div>
+   <div class="sheet-h"><div><h3 id="mT">${esc(a.nombre)}${inst.porSuc?' · Suc. '+esc(inst.suc):''}</h3><p class="meta">${temaDe(a,inst.lim)?`<span class="chip" style="background:var(--amarillo-soft);border-color:var(--amarillo);color:var(--ink)">${esc(temaDe(a,inst.lim))}</span>`:''}<span class="pill ${st}">${ST_L[st]}</span><span>Límite ${fCorta(inst.lim)} ${fHora(inst.lim)}</span>${col&&!propio?`<span>${esc(col.nombre)}</span>`:''}${rec?`<span>Registrada ${fCorta(new Date(rec.at))} ${fHora(new Date(rec.at))}</span>`:''}${rec&&rec.editado?`<span class="chip">Corregida por Dirección ${fCorta(new Date(rec.editado.at))} ${fHora(new Date(rec.editado.at))}</span>`:''}</p></div><button class="btn sm" type="button" id="mX" aria-label="Cerrar">Cerrar</button></div>
    ${md.recien?`<div class="alerta ok" role="status"><b>Guardado</b><span>${esc(md.recien)} Descarga el formato en PDF para imprimirlo y firmarlo.</span><button class="btn pri" type="button" id="mPdfTop">Descargar formato PDF</button></div>`:''}
    ${vInfo}${body}<div id="modMsg">${msgHtml('mod')}</div>
    <div class="row">${!ro&&a.tipo==='inventario'&&!hecho(rec)?`<button class="btn" type="button" id="mAvance">Guardar avance</button>`:''}${!ro?`<button class="btn pri" type="button" id="mSave">${a.tipo==='inventario'?(hecho(rec)?'Guardar cambios':'Terminar inventario'):(rec?'Guardar cambios':(st==='vencida'?'Registrar tarde':'Registrar'))}</button>`:''}
@@ -838,7 +839,7 @@ function drawModal(){
    ${a.frec==='dias'&&a.temas?`<button class="btn" type="button" id="mCal">Calendario del mes (PDF)</button>`:''}
    ${hecho(rec)?`<button class="btn ${md.recien?'pri':''}" type="button" id="mPdf">Descargar formato PDF</button>`:''}</div>
    ${ro&&!propio&&!rec?'<p class="note">Solo la persona responsable puede registrar esta actividad.</p>':''}
-   ${bloq?'<p class="note">Este conteo ya fue registrado y no se puede modificar. Si hubo un error, anótalo al validarlo o avisa a Dirección.</p>':(val&&propio&&ro?'<p class="note">El conteo ya fue validado; para corregirlo pide a Dirección que lo ajuste.</p>':'')}
+   ${bloq&&propio?'<p class="note">Esta actividad ya fue registrada y no se puede modificar. Si hubo un error, avisa a Dirección.</p>':(val&&propio&&ro?'<p class="note">El conteo ya fue validado; para corregirlo pide a Dirección que lo ajuste.</p>':'')}
   </div></div>`;
   $('#mX').onclick=cerrar;$('#ov').onclick=e=>{if(e.target.id==='ov')cerrar()};
   document.onkeydown=e=>{if(e.key==='Escape'&&S.modal)cerrar()};
@@ -1033,7 +1034,7 @@ function bindConteo(tipo){
   $$('.cap input').forEach(i=>i.addEventListener('input',upd));upd();
 }
 async function guardar(md,parcial){
-  const{inst,cid}=md;const a=inst.act;const me=meCol();if(!me||me.id!==cid)return;
+  const{inst,cid}=md;const a=inst.act;const me=meCol();const propio=!!(me&&me.id===cid);if(!propio&&!S.admin)return;
   const prev=(S.idx[cid]||{})[inst.key];const now=ahora();let datos={};
   if(a.tipo==='joyeria'||a.tipo==='piso'){datos=leerConteo(a.tipo);
     const vacios=Object.values(datos.rows).filter(x=>x.s===''||(a.tipo==='joyeria'?(x.p===''&&x.o===''):x.f==='')).length;
@@ -1055,12 +1056,14 @@ async function guardar(md,parcial){
     if(a.lista){const L=leerLista(a);const inc=L.filter(r=>!String(r[a.lista.cols[0].k]||'').trim());if(inc.length){flash('mod','err',`Hay ${inc.length} ${inc.length===1?'renglón':'renglones'} con datos pero sin ${a.lista.cols[0].l.toLowerCase()}.`);return}datos.lista=L}}
   const nota=$('#mNota').value.trim();
   if(a.tipo==='validar'&&!nota){flash('mod','err','Escribe un comentario: qué conteo faltó o por qué no se validó.');return}
-  const rec={key:inst.key,act:a.id,nombre:a.nombre,tipo:a.tipo,per:inst.per,suc:inst.suc||'',colab:cid,mes:inst.mes,lim:inst.lim.toISOString(),at:hecho(prev)?prev.at:now.toISOString(),upd:now.toISOString(),datos,nota,por:S.uid};
+  if(hecho(prev)&&prev.datos&&(a.tipo==='joyeria'||a.tipo==='piso')){datos.hi=prev.datos.hi||datos.hi;datos.hf=prev.datos.hf||datos.hf}
+  const rec={key:inst.key,act:a.id,nombre:a.nombre,tipo:a.tipo,per:inst.per,suc:inst.suc||'',colab:cid,mes:inst.mes,lim:inst.lim.toISOString(),at:hecho(prev)?prev.at:now.toISOString(),upd:now.toISOString(),datos,nota,por:hecho(prev)&&prev.por?prev.por:S.uid};
+  if(S.admin&&hecho(prev))rec.editado={at:now.toISOString(),por:S.uid,nombre:'Dirección'};
   const b=$('#mSave');if(b){b.disabled=true;b.textContent='Guardando…'}
   if(a.adjunto){const keep=md.keep||((prev&&prev.datos&&prev.datos.archivos)||[]);if(a.adjuntoObligatorio&&!keep.length&&!md.files.length){if(b){b.disabled=false;b.textContent='Registrar'}flash('mod','err','Sube la foto o el PDF del reporte antes de guardar.');return}
     try{const subidos=await subirAdjuntos(cid,inst.key,md.files);rec.datos.archivos=[...keep,...subidos];md.files=[]}catch(e){if(b){b.disabled=false;b.textContent='Registrar'}flash('mod','err','No se pudo subir el archivo: '+(e&&e.message||'revisa tu conexión')+'.');return}}
-  const row={colab:cid,key:inst.key,mes:inst.mes,act:a.id,data:rec,user_id:S.uid,at:rec.at,upd:rec.upd};
-  const{error}=await S.sb.from('registros').upsert(row,{onConflict:'colab,key'});
+  const row={colab:cid,key:inst.key,mes:inst.mes,act:a.id,data:rec,user_id:propio||!prev?S.uid:(prev.uid||S.uid),at:rec.at,upd:rec.upd};
+  const{error}=propio?await S.sb.from('registros').upsert(row,{onConflict:'colab,key'}):await S.sb.from('registros').update({data:rec,upd:rec.upd}).eq('colab',cid).eq('key',inst.key);
   if(error){if(b){b.disabled=false;b.textContent='Registrar'}flash('mod','err',errText(error));return}
   upsertLocal(S.rows,row);
   if(parcial){S.modal=null;flash('main','ok',`Avance guardado: ${datos.n} de ${datos.total} renglones. Termina antes del ${fCorta(inst.lim)} ${fHora(inst.lim)}.`);return}
@@ -1118,6 +1121,7 @@ async function pdfActividad(cid,rec,a,k){k=k||'mod';
     [diaria?'Hora límite':'Fecha límite',lim?(diaria?fHora(lim):`${fCorta(lim)} ${fHora(lim)}`):'—','Registrado en sistema',`${fCorta(at)} ${fHora(at)}`],
     ['Estado',aTiempo?'Entregado a tiempo':'Entregado tarde','Evidencias',`${nArch} archivo(s)`]];
   if(t==='joyeria'||t==='piso')filas.push(['Hora inicio del conteo',d.hi||'—','Hora final del conteo',d.hf||'—']);
+  if(rec.editado)filas.push(['Corregido por','Dirección','Fecha de corrección',`${fCorta(new Date(rec.editado.at))} ${fHora(new Date(rec.editado.at))}`]);
   sec('DATOS DEL REPORTE');
   AT(doc,Object.assign({},kv,{startY:y,body:filas,didParseCell:c=>{if(c.section==='body'&&c.row.index===3&&c.column.index===1){c.cell.styles.fontStyle='bold';c.cell.styles.textColor=aTiempo?[29,134,87]:[168,106,16]}}}));
   y=lastY(doc)+18;
