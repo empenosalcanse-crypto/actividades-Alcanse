@@ -176,6 +176,8 @@ td.dif-n{color:var(--bad);font-weight:700}td.dif-p{color:var(--warn);font-weight
 .adj{border:1px dashed var(--azul);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:8px;background:var(--azul-soft)}
 .adj-l{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .adj-i{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+.adj-prev{flex:1 0 100%;display:block;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden;text-align:center;min-height:60px}
+.adj-prev img{display:block;width:100%;max-height:420px;object-fit:contain;background:#f4f6f8}
 .adj-t{font-size:.72rem;font-weight:700;background:var(--azul);color:#fff;border-radius:5px;padding:2px 6px}
 .adj-n{flex:1 1 140px;min-width:0;overflow-wrap:anywhere;font-weight:600;font-size:.9rem}
 .hint-scroll{display:none}
@@ -989,7 +991,9 @@ function bindLista(a){const Lc=a.lista;const upd=()=>{const L=leerLista(a);Lc.co
 const ADJ_MAX=3,ADJ_BYTES=10*1024*1024;
 function adjHtml(md,rec,ro){
   const keep=md.keep||((rec&&rec.datos&&rec.datos.archivos)||[]);const n=keep.length+md.files.length;
-  const item=(f,i,nuevo)=>`<li class="adj-i"><span class="adj-t">${/pdf/.test(f.tipo||f.type||'')?'PDF':'Foto'}</span><span class="adj-n">${esc(f.nombre||f.name)}</span><span class="note">${Math.round((f.tam||f.size||0)/1024)} KB${nuevo?' · por subir':''}</span>
+  const esFoto=f=>!/pdf/.test(f.tipo||f.type||'');
+  const urlLocal=f=>{md.urls=md.urls||new Map();if(!md.urls.has(f))md.urls.set(f,URL.createObjectURL(f));return md.urls.get(f)};
+  const item=(f,i,nuevo)=>`<li class="adj-i">${esFoto(f)?`<a class="adj-prev" ${nuevo?`href="${urlLocal(f)}"`:`data-adjver="${i}" href="#"`} target="_blank" rel="noopener" aria-label="Abrir foto ${esc(f.nombre||f.name)}"><img alt="Foto de evidencia ${esc(f.nombre||f.name)}" ${nuevo?`src="${urlLocal(f)}"`:`data-adjimg="${i}"`}></a>`:''}<span class="adj-t">${/pdf/.test(f.tipo||f.type||'')?'PDF':'Foto'}</span><span class="adj-n">${esc(f.nombre||f.name)}</span><span class="note">${Math.round((f.tam||f.size||0)/1024)} KB${nuevo?' · por subir':''}</span>
     ${nuevo?'':`<a class="btn sm" data-adjver="${i}" href="#" target="_blank" rel="noopener">Ver</a>`}${ro?'':`<button class="btn sm dang" type="button" data-adjdel="${nuevo?'n':'k'}${i}">Quitar</button>`}</li>`;
   return`<div class="adj"><div class="row"><b>Evidencia: foto o PDF</b><span class="note">${n} de ${ADJ_MAX}</span></div>
   ${n?`<ul class="adj-l">${keep.map((f,i)=>item(f,i,false)).join('')}${md.files.map((f,i)=>item(f,i,true)).join('')}</ul>`:`<p class="note">${ro?'Sin archivos.':'Toma una foto del formato o sube el PDF. Hasta 3 archivos de 10 MB.'}</p>`}
@@ -998,8 +1002,10 @@ function adjHtml(md,rec,ro){
 }
 function bindAdj(md,rec,ro){
   const keep=md.keep||((rec&&rec.datos&&rec.datos.archivos)||[]);
-  $$('[data-adjver]').forEach(el=>{const f=keep[+el.dataset.adjver];if(!f)return;el.removeAttribute('href');el.textContent='Cargando…';
-    S.sb.storage.from('evidencias').createSignedUrl(f.path,3600).then(({data,error})=>{if(error||!data){el.textContent='No disponible';return}el.href=data.signedUrl;el.textContent='Ver'})});
+  const urls={};const firmar=i=>urls[i]||(urls[i]=S.sb.storage.from('evidencias').createSignedUrl(keep[i].path,3600).then(({data,error})=>error||!data?null:data.signedUrl).catch(()=>null));
+  $$('[data-adjver]').forEach(el=>{const i=+el.dataset.adjver;if(!keep[i])return;const btn=!el.classList.contains('adj-prev');el.removeAttribute('href');if(btn)el.textContent='Cargando…';
+    firmar(i).then(u=>{if(!u){if(btn)el.textContent='No disponible';return}el.href=u;if(btn)el.textContent='Ver'})});
+  $$('[data-adjimg]').forEach(im=>{const i=+im.dataset.adjimg;if(!keep[i])return;im.onerror=()=>{const a=im.closest('.adj-prev');if(a)a.innerHTML='<span class="note">Vista previa no disponible; usa “Ver”.</span>'};firmar(i).then(u=>{if(u)im.src=u;else im.onerror()})});
   $$('[data-adjpick]').forEach(b=>b.onclick=()=>{const i=$('#'+b.dataset.adjpick);if(i)i.click()});
   ['#adjIn','#adjCam'].forEach(sel=>{const inp=$(sel);if(inp)inp.onchange=async()=>{const fs=[...inp.files];inp.value='';
     for(const f of fs){if(!/^image\/|application\/pdf/.test(f.type)&&!/\.(jpe?g|png|webp|heic|heif|pdf)$/i.test(f.name)){flash('mod','err',`"${f.name}" no es foto ni PDF.`);continue}
@@ -1160,7 +1166,10 @@ async function pdfReporte(cid,rec,a,k){k=k||'mod';
   doc.setTextColor(...GR);doc.text('NOMBRE Y FIRMA RESPONSABLE',(60+W/2-30)/2,y+12,{align:'center'});doc.text(val?'VALIDADO EN SISTEMA · COORDINACIÓN OPERATIVA':'VALIDACIÓN COORDINACIÓN OPERATIVA',(W/2+30+W-60)/2,y+12,{align:'center'});
   // fotos: una por página
   const fotos=arch.filter(f=>!/pdf/.test(f.tipo||''));const fallas=[];
-  for(const [i,f] of fotos.entries()){try{const im=await imgParaPdf(f);doc.addPage();let yy=pdfHead(doc,'EVIDENCIA FOTOGRÁFICA',`${titulo} · Suc. ${rec.suc||''} · ${lim?fCorta(lim):fCorta(at)}`);
+  y+=34;
+  for(const [i,f] of fotos.entries()){try{const im=await imgParaPdf(f);let yy;
+      if(i===0&&H-50-y>=230){yy=y;doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...AZ);doc.text('EVIDENCIA FOTOGRÁFICA',36,yy);yy+=14}
+      else{doc.addPage();yy=pdfHead(doc,'EVIDENCIA FOTOGRÁFICA',`${titulo} · Suc. ${rec.suc||''} · ${lim?fCorta(lim):fCorta(at)}`)}
       doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(...GR);doc.text(`Foto ${i+1} de ${fotos.length}: ${f.nombre}`,36,yy+4);yy+=14;
       const mw=W-72,mh=H-yy-50;const sc=Math.min(mw/im.w,mh/im.h);const w=im.w*sc,h=im.h*sc;doc.addImage(im.src,'JPEG',(W-w)/2,yy,w,h)}catch(e){fallas.push(f.nombre)}}
   const pdfs=arch.filter(f=>/pdf/.test(f.tipo||''));
