@@ -6,8 +6,9 @@
 <meta name="theme-color" content="#009acb">
 <meta name="robots" content="noindex,nofollow">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" href="favicon-32.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Actividades">
 <title>Actividades Alcanse</title>
@@ -34,6 +35,12 @@
   --good:#4fc78f; --good-soft:#163628; --bad:#f07c66; --bad-soft:#3d1f1a; --warn:#f2b552; --warn-soft:#3a2c14; color-scheme:dark;}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
+.inst{background:#fff;border-bottom:1px solid var(--line);box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.inst-in{max-width:1040px;margin:0 auto;padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.inst-in img{border-radius:10px;flex:none}
+.inst-t{display:flex;flex-direction:column;flex:1 1 200px;min-width:0;font-size:.88rem;color:var(--ink-2,#545556)}
+.inst-t b{color:var(--ink,#222);font-size:.95rem}
+
 html,body{margin:0}
 body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--f-body);-webkit-text-size-adjust:100%}
 h1,h2,h3,h4{font-family:var(--f-display);margin:0;text-wrap:balance;letter-spacing:.01em}
@@ -187,6 +194,7 @@ td.dif-n{color:var(--bad);font-weight:700}td.dif-p{color:var(--warn);font-weight
   </div>
   <nav class="tabs" id="tabs" aria-label="Secciones"></nav>
 </header>
+<div id="instalar" class="inst" hidden role="region" aria-label="Instalar aplicación"><div class="inst-in"><img src="icon-192.png" alt="" width="40" height="40"><div class="inst-t"><b>Instala Actividades Alcanse</b><span id="instTx">Ábrela desde un ícono en tu celular o computadora, como una app.</span></div><button class="btn pri sm" type="button" id="instBtn">Instalar</button><button class="btn sm" type="button" id="instNo" aria-label="Ahora no">Ahora no</button></div></div>
 <main id="main"><div class="card"><p class="lede">Cargando actividades…</p></div></main>
 <footer id="foot"></footer>
 <div id="modal"></div>
@@ -1153,6 +1161,24 @@ function pdfMes(mes){
 }
 
 init();
+</script>
+
+<script>
+(function(){
+  var standalone=window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+  if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('sw.js').catch(function(){});
+  if(standalone||window.top!==window)return;
+  var bar=document.getElementById('instalar'),btn=document.getElementById('instBtn'),no=document.getElementById('instNo'),tx=document.getElementById('instTx');
+  if(!bar)return;var evt=null;
+  function oculto(){try{return Date.now()<+(localStorage.getItem('instNo')||0)}catch(e){return false}}
+  var ua=navigator.userAgent||'';var ios=/iphone|ipad|ipod/i.test(ua)||(/macintosh/i.test(ua)&&navigator.maxTouchPoints>1);
+  function mostrar(){if(!oculto())bar.hidden=false}
+  window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();evt=e;mostrar()});
+  window.addEventListener('appinstalled',function(){bar.hidden=true});
+  if(ios){tx.textContent='En Safari toca Compartir (el cuadro con flecha hacia arriba) y luego "Agregar a pantalla de inicio".';btn.textContent='Cómo instalar';mostrar()}
+  btn.onclick=function(){if(evt){evt.prompt();evt.userChoice.then(function(){evt=null;bar.hidden=true})}else if(ios){tx.innerHTML='1. Abre esta página en <b>Safari</b>.<br>2. Toca <b>Compartir</b> (cuadro con flecha ↑).<br>3. Elige <b>Agregar a pantalla de inicio</b> y toca <b>Agregar</b>.';btn.hidden=true}};
+  no.onclick=function(){bar.hidden=true;try{localStorage.setItem('instNo',String(Date.now()+7*864e5))}catch(e){}};
+})();
 </script>
 </body>
 </html>
