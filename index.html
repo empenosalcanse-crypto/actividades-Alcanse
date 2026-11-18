@@ -1210,7 +1210,7 @@ init();
 
 <script>
 (function(){
-  var standalone=window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+  var standalone=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;
   if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('sw.js').catch(function(){});
   if(standalone||window.top!==window)return;
   var bar=document.getElementById('instalar'),btn=document.getElementById('instBtn'),no=document.getElementById('instNo'),tx=document.getElementById('instTx');
