@@ -1289,7 +1289,7 @@ function asisTot(rows){const L=Object.entries(rows||{}).filter(([k,x])=>x&&x.inc
   const dls=[...new Set(L.map(([,x])=>num(x.dl)))];T.dlTxt=L.length?(dls.length===1?`${dls[0]} por colaborador`:`${T.dl} en total`):'0';const pds=[...new Set(L.map(([,x])=>num(x.pd)))];T.pdTxt=L.length?(pds.length===1?`${pds[0]} por colaborador`:`${T.pd} en total`):'0';return T}
 function formAsis(a,inst,d,dis){const{ini,fin}=periodoAsis(inst);const R=(d&&d.rows)||asisPrefill(inst);const C=colsAsis();const T=asisTot(R);
   return`<div class="cj-res"><b>Periodo:</b> semana del ${fLarga(ini)} al ${fLarga(fin)} · <b>Periodicidad:</b> semanal</div>
-  <p class="note">Captura todos los datos de cada colaborador; pon 0 donde no aplique. Quita la palomita de quien no se reporta en esta nómina.</p>
+  <p class="note">Captura los datos de cada colaborador; lo que dejes en blanco cuenta como 0. Quita la palomita de quien no se reporta en esta nómina.</p>
   <div class="tbl"><table class="asis"><thead><tr><th>Reportar</th><th>Colaborador</th>${AS_C.map(([k,l])=>`<th class="n">${l}</th>`).join('')}<th>Observaciones</th></tr></thead><tbody>
   ${C.map(c=>{const x=R[c.id]||{inc:false};return`<tr class="${x.inc?'':'off'}"><td style="text-align:center"><input type="checkbox" data-as="${c.id}" data-k="inc" ${x.inc?'checked':''} ${dis} aria-label="Reportar a ${esc(c.nombre)}"></td><td><b>${esc(c.nombre)}</b><div class="note">${esc(PUESTOS[c.puesto]||c.puesto)}</div></td>
    ${AS_C.map(([k,l])=>`<td><input class="in n" data-as="${c.id}" data-k="${k}" inputmode="numeric" value="${esc(x[k]??'')}" placeholder="—" ${dis||!x.inc?'disabled':''} aria-label="${esc(c.nombre)} ${l}"></td>`).join('')}
@@ -1463,7 +1463,7 @@ async function guardar(md,parcial){
     const vac=datos.rows.filter(x=>x.sis==='');if(vac.length){flash('mod','err',`Falta capturar lo que debe tener según sistema en: ${vac.map(x=>x.c).join(', ')}. Pon 0 si no tiene.`);return}
     if(datos.dif!==0&&!datos.obs){flash('mod','err',`La caja no cuadra (${datos.dif>0?'sobrante':'faltante'} de ${m2(Math.abs(datos.dif))}). Explica el motivo en Observaciones.`);return}}
   else if(a.tipo==='asistencia'){datos=leerAsis();if(!datos.tot.n){flash('mod','err','Marca al menos un colaborador para reportar.');return}
-    if(datos.falta.length){flash('mod','err','Faltan datos de: '+datos.falta.map(id=>{const c=colById(id);return c?nombreCorto(c):id}).join(', ')+'. Pon 0 donde no aplique.');return}delete datos.falta;const{ini,fin}=periodoAsis(inst);datos.ini=iso(ini);datos.fin=iso(fin)}
+    delete datos.falta;const{ini,fin}=periodoAsis(inst);datos.ini=iso(ini);datos.fin=iso(fin)}
   else if(a.tipo==='inventario'){datos=leerInv(a,inst);
     const sinCierre=Object.values(datos.rows).filter(x=>(x.est==3||x.est==4)&&!x.fc).length;
     if(sinCierre){flash('mod','err',`Hay ${sinCierre} ${sinCierre===1?'renglón cerrado':'renglones cerrados'} (estatus 3 o 4) sin fecha de cierre.`);return}
@@ -1587,7 +1587,7 @@ async function pdfActividad(cid,rec,a,k){k=k||'mod';
   else if(t==='asistencia'){const R=d.rows||{};const T=d.tot||asisTot(R);sec('RESUMEN DEL PERIODO');
     tabla(Object.assign({},kv,{body:[['Periodo',d.ini?`${fCorta(D0(d.ini))} al ${fCorta(D0(d.fin))}`:'','Periodicidad','Semanal'],['Colaboradores reportados',String(T.n),'Días laborados',T.dlTxt],['Faltas',String(T.fa),'Retardos',String(T.re)],['Días inhábiles',String(T.di),'Prima dominical',T.pdTxt],['Incapacidades',String(T.in),'Vacaciones',String(T.va)]]}));
     sec('DETALLE POR COLABORADOR');const L=Object.entries(R).filter(([,x])=>x&&x.inc);
-    tabla({head:[['#','Colaborador',...AS_C.map(c=>c[1]),'Observaciones']],body:L.map(([id,x],i)=>{const c=colById(id);return[i+1,c?c.nombre:id,...AS_C.map(([k])=>String(num(x[k]))),x.ob||'']}),styles:{fontSize:8.5,cellPadding:4,textColor:[22,35,42],lineColor:[215,225,230],lineWidth:0.5},columnStyles:Object.assign({0:{halign:'right',cellWidth:20}},...AS_C.map((c,i)=>({[i+2]:{halign:'right'}}))),didParseCell:q=>{if(q.section==='body'&&(q.column.index===3||q.column.index===4)&&String(q.cell.raw)!=='0'){q.cell.styles.textColor=[192,64,44];q.cell.styles.fontStyle='bold'}}})}
+    tabla({head:[['#','Colaborador',...AS_C.map(c=>c[1]),'Observaciones']],body:L.map(([id,x],i)=>{const c=colById(id);return[i+1,c?c.nombre:id,...AS_C.map(([k])=>x[k]===''||x[k]==null?'—':String(num(x[k]))),x.ob||'']}),styles:{fontSize:8.5,cellPadding:4,textColor:[22,35,42],lineColor:[215,225,230],lineWidth:0.5},columnStyles:Object.assign({0:{halign:'right',cellWidth:20}},...AS_C.map((c,i)=>({[i+2]:{halign:'right'}}))),didParseCell:q=>{if(q.section==='body'&&(q.column.index===3||q.column.index===4)&&!['0','—'].includes(String(q.cell.raw))){q.cell.styles.textColor=[192,64,44];q.cell.styles.fontStyle='bold'}}})}
   else if(t==='validar'){const L=conteosDia(rec.per,rec.suc);sec('CONTEOS DEL DÍA');
     tabla({head:[['Conteo','Registró','Hora','Validación']],body:['joyeria','piso'].map(tp=>{const x=L.find(z=>z.tipo===tp);return[tp==='joyeria'?'Conteo de joyería':'Conteo piso de venta',x?nombreCorto(colById(x.cid)):'Sin conteo',x?fHora(new Date(x.r.at)):'',x?(x.val?'Validado':'Por validar'):'—']})})}
   texto('COMENTARIO',rec.nota||'Sin comentarios.');
