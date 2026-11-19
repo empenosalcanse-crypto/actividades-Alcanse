@@ -191,6 +191,7 @@ i.rc{width:16px;height:16px;vertical-align:middle;cursor:default}
 .card.aud-bad{border-color:#e8b4aa;background:#fffaf8}
 .in:disabled,.sel:disabled{background:#f4f6f8;color:var(--ink,#16232a);cursor:default}
 .acc-mis{border-color:#ffd677;background:#fffbf0}.acc-it{display:flex;gap:12px;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding:10px 0;flex-wrap:wrap}.acc-it>div:first-child{flex:1 1 260px}.acc-r{flex:1 1 100%}
+.acc-fil .fl{flex:1 1 160px}
 .acc-f{padding-top:10px}
 .aud-it{border-top:1px solid var(--line);padding:10px 0;display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center}
 .aud-it.no{background:#fdf1ee;margin:0 -12px;padding:10px 12px}
@@ -520,7 +521,7 @@ function vAuditorias(){
   ${L.length?`<div class="tbl"><table><thead><tr><th>Fecha</th><th>Aplicativo</th><th>Sucursal</th><th>Auditor</th><th>Llegada</th><th>Resultado</th><th>Estado</th><th></th></tr></thead><tbody>
    ${L.map(a=>{const d=a.data||{};const rs=audResumen(a);const c=tipoAud(a)==='situacional'?audCalc(a):{crit:[]};return`<tr class="clk" data-aud="${a.id}" tabindex="0"><td>${fCorta(D0(a.fecha))}</td><td>${esc(nomTipo(tipoAud(a)))}</td><td>${esc(a.suc)}</td><td>${esc(nombrePerfil(a.auditor))}</td><td>${esc(d.llegada||'')}</td><td><span class="pill ${rs[1]==='good'?'ok':rs[1]==='warn'?'hoy':rs[1]==='bad'?'vencida':''}">${esc(rs[0])}</span>${c.crit.length?` <span class="note">${c.crit.length} crítico${c.crit.length>1?'s':''}</span>`:''}</td><td>${a.estado==='cerrada'?'<span class="pill ok">Cerrada</span>':'<span class="pill hoy">En proceso</span>'}</td><td><button class="btn sm" type="button" data-audpdf="${a.id}">PDF</button></td></tr>`}).join('')}
   </tbody></table></div>`:'<div class="card"><p class="note">Aún no hay auditorías registradas.</p></div>'}
-  <div class="card"><h3>Acciones correctivas</h3>${(()=>{const A=(S.acc||[]).slice().sort((x,y)=>({hecha:0,pendiente:1,verificada:2}[x.estado]-{hecha:0,pendiente:1,verificada:2}[y.estado])||x.limite.localeCompare(y.limite));const ab=A.filter(x=>x.estado!=='verificada');return accTabla(ab,true)+(A.length>ab.length?`<p class="note">${A.length-ab.length} acción(es) ya verificadas; se ven dentro de cada auditoría.</p>`:'')})()}</div>`;
+  ${vAccHist()}`;
 }
 function audBtn(k,v,cur,ro){const lab={si:'Cumple',no:'No cumple',na:'N.A.'}[v];return`<button type="button" class="seg-b ${cur===v?'on '+v:''}" data-av="${esc(k)}" data-v="${v}" ${ro?'disabled':''} aria-pressed="${cur===v}">${lab}</button>`}
 function audItemHtml(a,x,ro){const it=((a.data||{}).it||{})[x.k]||{};const fotos=it.f||[];
@@ -707,6 +708,8 @@ function bindAcc(){
   $$('[data-accver]').forEach(b=>b.onclick=async()=>{const x=S.acc.find(z=>z.id===b.dataset.accver);if(await accUpd(x.id,{estado:'verificada',data:Object.assign({},x.data,{verif:{at:ahora().toISOString(),por:S.uid}})}))render()});
   $$('[data-accreg]').forEach(b=>b.onclick=async()=>{const x=S.acc.find(z=>z.id===b.dataset.accreg);if(await accUpd(x.id,{estado:'pendiente'}))render()});
   $$('[data-accdel]').forEach(b=>b.onclick=async()=>{if(b.dataset.ok!=='1'){b.dataset.ok='1';b.textContent='¿Seguro?';return}const{error}=await S.sb.from('acciones').delete().eq('id',b.dataset.accdel);if(error){flash('aud','err',errText(error));return}S.acc=S.acc.filter(z=>z.id!==b.dataset.accdel);render()});
+  $$('[data-accf]').forEach(el=>el.onchange=()=>{S.accF=S.accF||{};S.accF[el.dataset.accf]=el.value;render()});
+  const ap=$('#accPdf');if(ap)ap.onclick=()=>pdfAcciones();
   $$('[data-accimg]').forEach(l=>l.onclick=async e=>{e.preventDefault();const{data}=await S.sb.storage.from('evidencias').createSignedUrl(l.dataset.accimg,3600);if(data)window.open(data.signedUrl,'_blank','noopener')});
   $$('[data-accresp]').forEach(b=>b.onclick=()=>{S.accResp=b.dataset.accresp;S.accFoto=null;render()});
   const cc=$('#accCancel');if(cc)cc.onclick=()=>{S.accResp=null;S.accFoto=null;render()};
@@ -716,6 +719,42 @@ function bindAcc(){
     catch(e){b.disabled=false;flash('main','err','No se pudo subir la foto: '+errText(e));return}
     if(await accUpd(x.id,{estado:'hecha',data:Object.assign({},x.data,{resp:{nota,at:ahora().toISOString(),f}})})){S.accResp=null;S.accFoto=null;flash('main','ok','Acción enviada. Dirección o Auditoría la verificará.');render()}else b.disabled=false});
 }
+function accCumpl(x){const r=(x.data||{}).resp;if(r)return iso(new Date(r.at))<=x.limite?'tiempo':'tarde';return iso(ahora())>x.limite?'vencida':'pendiente'}
+function accFiltradas(){const F=S.accF=S.accF||{col:'',suc:'',est:'abiertas',mes:''};
+  return(S.acc||[]).filter(x=>{if(F.col&&x.colab!==F.col)return false;if(F.suc&&x.suc!==F.suc)return false;if(F.mes&&String(x.creado).slice(0,7)!==F.mes)return false;
+    const e=x.estado,v=e==='pendiente'&&iso(ahora())>x.limite;
+    return F.est==='todas'||(F.est==='abiertas'&&e!=='verificada')||(F.est==='pendientes'&&e==='pendiente'&&!v)||(F.est==='vencidas'&&v)||(F.est==='hechas'&&e==='hecha')||(F.est==='verificadas'&&e==='verificada')})
+   .sort((x,y)=>({hecha:0,pendiente:1,verificada:2}[x.estado]-{hecha:0,pendiente:1,verificada:2}[y.estado])||String(y.creado).localeCompare(String(x.creado)))}
+function accResumen(L){const M={};L.forEach(x=>{const k=x.colab;const o=M[k]=M[k]||{colab:k,total:0,tiempo:0,tarde:0,vencida:0,pendiente:0};o.total++;o[accCumpl(x)]++});
+  return Object.values(M).sort((a,b)=>b.total-a.total)}
+function vAccHist(){const F=S.accF=S.accF||{col:'',suc:'',est:'abiertas',mes:''};const L=accFiltradas();const RS=accResumen(L);
+  const cols=[...new Set((S.acc||[]).map(x=>x.colab))].map(id=>colById(id)||{id,nombre:id}).sort((a,b)=>nombreCorto(a).localeCompare(nombreCorto(b)));
+  const meses=[...new Set((S.acc||[]).map(x=>String(x.creado).slice(0,7)))].sort().reverse();
+  const opt=(v,l,cur)=>`<option value="${esc(v)}" ${cur===v?'selected':''}>${esc(l)}</option>`;
+  return`<div class="card"><div class="row"><h3 style="flex:1">Historial de acciones correctivas</h3><button class="btn sm" type="button" id="accPdf" ${L.length?'':'disabled'}>Descargar PDF</button></div>
+  <div class="row acc-fil"><label class="fl">Colaborador<select class="sel" data-accf="col">${opt('','Todos',F.col)}${cols.map(c=>opt(c.id,nombreCorto(c),F.col)).join('')}</select></label>
+   <label class="fl">Sucursal<select class="sel" data-accf="suc">${opt('','Todas',F.suc)}${SUCS.map(s=>opt(s,s,F.suc)).join('')}</select></label>
+   <label class="fl">Estado<select class="sel" data-accf="est">${[['abiertas','Abiertas'],['todas','Todas'],['pendientes','Pendientes en plazo'],['vencidas','Vencidas'],['hechas','Hechas por verificar'],['verificadas','Verificadas']].map(([v,l])=>opt(v,l,F.est)).join('')}</select></label>
+   <label class="fl">Mes en que se creó<select class="sel" data-accf="mes">${opt('','Todos',F.mes)}${meses.map(m=>opt(m,mesLabel(m),F.mes)).join('')}</select></label></div>
+  ${RS.length?`<div class="tbl"><table><thead><tr><th>Colaborador</th><th class="n">Acciones</th><th class="n">A tiempo</th><th class="n">Tarde</th><th class="n">Vencidas</th><th class="n">En plazo</th><th class="n">% a tiempo</th></tr></thead><tbody>
+   ${RS.map(o=>{const c=colById(o.colab);const pc=o.total?Math.round(o.tiempo/o.total*100):0;return`<tr><td><b>${esc(c?nombreCorto(c):o.colab)}</b></td><td class="n">${o.total}</td><td class="n">${o.tiempo}</td><td class="n">${o.tarde}</td><td class="n">${o.vencida?`<b style="color:var(--bad)">${o.vencida}</b>`:0}</td><td class="n">${o.pendiente}</td><td class="n"><b>${pc}%</b></td></tr>`}).join('')}</tbody></table></div>`:''}
+  ${accTabla(L,true)}</div>`}
+async function pdfAcciones(){const k='aud';try{const F=S.accF||{};const L=accFiltradas();const RS=accResumen(L);
+  const doc=pdfNew('l');const W=doc.internal.pageSize.getWidth();const lbl={abiertas:'Abiertas',todas:'Todas',pendientes:'Pendientes en plazo',vencidas:'Vencidas',hechas:'Hechas por verificar',verificadas:'Verificadas'};
+  const sub=[F.col?nombreCorto(colById(F.col)||{nombre:F.col}):'Todos los colaboradores',F.suc?'Suc. '+F.suc:'Todas las sucursales',lbl[F.est]||'Todas',F.mes?mesLabel(F.mes):'Todos los meses'].join(' · ');
+  let y=pdfHead(doc,'HISTORIAL DE ACCIONES CORRECTIVAS',sub);const st={fontSize:8.5,cellPadding:4,textColor:[22,35,42],lineColor:[215,225,230],lineWidth:0.5};
+  doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...AZ);doc.text('RESUMEN POR COLABORADOR',36,y);y+=6;
+  AT(doc,{startY:y,head:[['Colaborador','Acciones','A tiempo','Tarde','Vencidas sin hacer','Pendientes en plazo','Cumplimiento a tiempo']],body:RS.map(o=>{const c=colById(o.colab);return[c?nombreCorto(c):o.colab,o.total,o.tiempo,o.tarde,o.vencida,o.pendiente,(o.total?Math.round(o.tiempo/o.total*100):0)+'%']}),styles:st,columnStyles:{1:{halign:'right'},2:{halign:'right'},3:{halign:'right'},4:{halign:'right'},5:{halign:'right'},6:{halign:'right',fontStyle:'bold'}}});
+  y=lastY(doc)+18;doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...AZ);doc.text('DETALLE',36,y);y+=6;
+  const CU={tiempo:'A tiempo',tarde:'Tarde',vencida:'Vencida',pendiente:'En plazo'};
+  AT(doc,{startY:y,head:[['Creada','Responsable','Sucursal','Origen','Acción','Límite','Estado','Cumplimiento','Respuesta','Verificada']],body:L.map(x=>{const c=colById(x.colab);const r=(x.data||{}).resp;const v=(x.data||{}).verif;
+    return[fCorta(new Date(x.creado)),c?nombreCorto(c):x.colab,x.suc||'',(x.data||{}).origen||'',x.descripcion,fCorta(D0(x.limite)),accEstado(x)[0],CU[accCumpl(x)],r?`${r.nota||''} (${fCorta(new Date(r.at))})`:'',v?fCorta(new Date(v.at)):''] }),
+    styles:Object.assign({},st,{fontSize:8}),columnStyles:{4:{cellWidth:180},8:{cellWidth:150}},didParseCell:q=>{if(q.section==='body'&&q.column.index===7){const s=String(q.cell.raw);q.cell.styles.fontStyle='bold';q.cell.styles.textColor=s==='A tiempo'?[29,134,87]:s==='Vencida'?[192,64,44]:s==='Tarde'?[168,106,16]:GR}}});
+  pdfFoot(doc);await guardarArchivo(`Acciones correctivas ${iso(ahora())}.pdf`,doc,k)}catch(e){flash(k,'err','No se pudo generar el PDF: '+e.message)}}
+function vAccMiHist(col){const L=(S.acc||[]).filter(x=>x.colab===col.id&&x.estado!=='pendiente').sort((a,b)=>String(b.creado).localeCompare(String(a.creado)));if(!L.length)return'';
+  const CU={tiempo:['A tiempo','ok'],tarde:['Tarde','hoy'],vencida:['Vencida','vencida'],pendiente:['En plazo','']};
+  return`<div class="card"><h3>Mis acciones correctivas cerradas</h3><div class="tbl"><table><thead><tr><th>Acción</th><th>Límite</th><th>Entregada</th><th>Cumplimiento</th><th>Estado</th></tr></thead><tbody>
+  ${L.map(x=>{const r=(x.data||{}).resp;const cu=CU[accCumpl(x)];return`<tr><td>${esc(x.descripcion)}${r&&r.nota?`<div class="note">${esc(r.nota)}</div>`:''}</td><td>${fCorta(D0(x.limite))}</td><td>${r?fCorta(new Date(r.at)):'—'}</td><td><span class="pill ${cu[1]}">${cu[0]}</span></td><td><span class="pill ${accEstado(x)[1]}">${accEstado(x)[0]}</span></td></tr>`}).join('')}</tbody></table></div></div>`}
 async function pdfAuditoria(a){const k='aud';
   try{flash(k,'ok','Preparando el PDF…');const d=a.data||{};const c=audCalc(a);const L=audItems(a);const it=d.it||{};
   const doc=pdfNew('p');const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
@@ -1065,6 +1104,7 @@ function vHistorial(col){
   <div class="row"><label class="fl" for="mesSel" style="flex-direction:row;align-items:center;gap:8px">Mes<select class="sel" id="mesSel" style="width:auto">${mesesOpts().map(k=>`<option value="${k}" ${k===mes?'selected':''}>${mesLabel(k)}</option>`).join('')}</select></label></div>
   <div class="tiles"><div class="tile"><span>A tiempo</span><b>${s.ok}</b></div><div class="tile"><span>Tarde</span><b>${s.tarde}</b></div><div class="tile ${s.vencida?'bad':''}"><span>No realizadas</span><b>${s.vencida}</b></div><div class="tile"><span>Cumplimiento</span><b>${p0(s.pct)}</b></div></div>
   ${L.length?`<div class="tbl"><table><thead><tr><th>Registrada</th><th>Actividad</th><th>Límite</th><th>Estado</th></tr></thead><tbody>${L.map(r=>{const lim=new Date(r.lim);const st=new Date(r.at)<=lim?'ok':'tarde';return`<tr class="clk" data-open="${esc(col.id+'~'+r.key)}"><td>${fCorta(new Date(r.at))} ${fHora(new Date(r.at))}</td><td>${esc(r.nombre||'')}${r.suc&&actById(r.act)&&actById(r.act).porSuc?' · '+esc(r.suc):''}</td><td>${fCorta(lim)} ${fHora(lim)}</td><td><span class="pill ${st}">${ST_L[st]}</span></td></tr>`}).join('')}</tbody></table></div>`:'<div class="empty">Sin registros en este mes.</div>'}
+  ${vAccMiHist(col)}
   ${s.vencida?`<section class="list"><div class="sec-h"><h3>No realizadas en ${mesLabel(mes).toLowerCase()}</h3></div>${s.lista.filter(i=>estado(i,R[i.key],now)==='vencida').reverse().map(i=>cardAct(i,R,now,false)).join('')}</section>`:''}`;
 }
 
