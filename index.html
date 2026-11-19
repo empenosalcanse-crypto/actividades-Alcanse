@@ -1369,18 +1369,19 @@ function pdfCalPub(mes,cid,k){k=k||'main';
   }catch(e){flash(k,'err','No se pudo generar el calendario: '+e.message)}
 }
 /* ============ lista de renglones dentro de una actividad con datos ============ */
-function listaHtml(a,d,dis){const Lc=a.lista;const n=Lc.n||10;const R=d.lista||[];
+function listaHtml(a,d,dis){const Lc=a.lista;const n=Lc.n||10;const R=d.lista||[];const vis=dis?Math.max(1,R.length):Math.min(n,Math.max(Lc.ini||n,R.length));
   const inp=(i,c)=>{const v=(R[i]||{})[c.k]??'';return c.t==='txt'?`<input id="ls_${i}_${c.k}" value="${esc(v)}" ${dis} style="text-align:left;min-width:170px" aria-label="${esc(c.l)} renglón ${i+1}">`:`<input id="ls_${i}_${c.k}" inputmode="decimal" value="${esc(v)}" ${dis} aria-label="${esc(c.l)} renglón ${i+1}" placeholder="${c.t==='money'?'$0.00':'0'}">`};
   const sumCols=Lc.cols.filter(c=>c.t!=='txt');
-  return`<h4 style="margin-top:4px">${esc(Lc.titulo||'Registros')}</h4><p class="note">${esc(Lc.nota||'')} Hasta ${n} renglones; deja vacíos los que no uses.</p>
+  return`<h4 style="margin-top:4px">${esc(Lc.titulo||'Registros')}</h4><p class="note">${esc(Lc.nota||'')} ${Lc.ini&&Lc.ini<n?`Si necesitas más, toca “+ Agregar renglón” (hasta ${n}).`:`Hasta ${n} renglones; deja vacíos los que no uses.`}</p>
   <p class="note hint-scroll">Desliza la tabla a la izquierda para ver todas las columnas.</p>
   <div class="tbl cap"><table><thead><tr><th class="n">#</th>${Lc.cols.map(c=>`<th${c.t!=='txt'?' class="n"':''}>${esc(c.l)}${c.t==='money'?' ($)':''}</th>`).join('')}</tr></thead><tbody>
-  ${Array.from({length:n},(_,i)=>`<tr><td class="n">${i+1}</td>${Lc.cols.map(c=>`<td>${inp(i,c)}</td>`).join('')}</tr>`).join('')}
-  <tr class="tot"><td></td>${Lc.cols.map((c,j)=>`<td class="${c.t!=='txt'?'n':''}" id="lsT_${c.k}">${j===0?'Totales':''}</td>`).join('')}</tr></tbody></table></div>`;
+  ${Array.from({length:n},(_,i)=>`<tr data-lsr="${i}" ${i>=vis?'hidden':''}><td class="n">${i+1}</td>${Lc.cols.map(c=>`<td>${inp(i,c)}</td>`).join('')}</tr>`).join('')}
+  <tr class="tot"><td></td>${Lc.cols.map((c,j)=>`<td class="${c.t!=='txt'?'n':''}" id="lsT_${c.k}">${j===0?'Totales':''}</td>`).join('')}</tr></tbody></table></div>${!dis&&vis<n?`<button class="btn sm" type="button" id="lsAdd">+ Agregar renglón</button>`:''}`;
 }
 function leerLista(a){const Lc=a.lista;const out=[];for(let i=0;i<(Lc.n||10);i++){const r={};let any=false;Lc.cols.forEach(c=>{const v=String(($(`#ls_${i}_${c.k}`)||{}).value||'').trim();if(v!=='')any=true;r[c.k]=c.t==='txt'?v:(v===''?'':num(v))});if(any)out.push(r)}return out}
 function bindLista(a){const Lc=a.lista;const upd=()=>{const L=leerLista(a);Lc.cols.forEach((c,j)=>{const el=$(`#lsT_${c.k}`);if(!el)return;if(c.t==='txt'){el.textContent=j===0?`Totales · ${L.length} ${L.length===1?'cliente':'clientes'}`:'';return}const t=L.reduce((s2,r)=>s2+num(r[c.k]),0);el.textContent=c.t==='money'?m2(t):String(t)})};
-  $$('#modal input[id^="ls_"]').forEach(i=>i.addEventListener('input',upd));upd()}
+  $$('#modal input[id^="ls_"]').forEach(i=>i.addEventListener('input',upd));upd();
+  const ad=$('#lsAdd');if(ad)ad.onclick=()=>{const h=$$('#modal tr[data-lsr][hidden]');if(h[0]){h[0].hidden=false;const f=h[0].querySelector('input');if(f)f.focus()}if(h.length<=1)ad.remove()}}
 /* ============ archivos adjuntos (foto o PDF) ============ */
 const ADJ_MAX=3,ADJ_BYTES=10*1024*1024;
 function adjHtml(md,rec,ro){
