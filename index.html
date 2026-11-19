@@ -194,6 +194,7 @@ i.rc{width:16px;height:16px;vertical-align:middle;cursor:default}
 .acc-fil .fl{flex:1 1 160px}
 .acc-f{padding-top:10px}
 .link-box{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--azul);text-decoration:underline;background:#f4f6f8}
+table.asis .in{min-width:56px;padding:6px 8px}table.asis tr.off td{opacity:.45}
 .aud-it{border-top:1px solid var(--line);padding:10px 0;display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center}
 .aud-it.no{background:#fdf1ee;margin:0 -12px;padding:10px 12px}
 .aud-l{font-weight:600;font-size:.92rem}.aud-x{grid-column:1/-1;display:flex;gap:8px}.aud-x .in{flex:1}
@@ -247,7 +248,7 @@ const PISO=[['tec','Tecnología'],['lb','Línea blanca'],['her','Herramientas'],
 const MOT_J=['Faltante en inventario','Duplicado','Apartado'];
 const HORA_MAX='18:00';
 const MOT_P=['Faltante','Duplicado','Apartado'];
-const TIPOS={check:'Confirmar que se hizo',campos:'Con datos a capturar',joyeria:'Formato: conteo diario de joyería',piso:'Formato: conteo piso de venta',validar:'Validar conteos (se marca sola)',inventario:'Formato: inventario de almacenes',caja:'Formato: cuadre de caja'};
+const TIPOS={asistencia:'Formato: reporte de asistencia',check:'Confirmar que se hizo',campos:'Con datos a capturar',joyeria:'Formato: conteo diario de joyería',piso:'Formato: conteo piso de venta',validar:'Validar conteos (se marca sola)',inventario:'Formato: inventario de almacenes',caja:'Formato: cuadre de caja'};
 const ST_L={ok:'Hecha',tarde:'Hecha tarde',vencida:'Vencida',hoy:'Pendiente hoy',abierta:'Pendiente',futura:'Próxima'};
 const AZ=[0,154,203],AM=[255,181,0],GR=[84,85,86];
 
@@ -1211,6 +1212,7 @@ function drawModal(){
   if(a.tipo==='joyeria'||a.tipo==='piso')body+=formConteo(a.tipo,d,dis,md);
   else if(a.tipo==='inventario')body+=formInv(a,inst,d,dis,md);
   else if(a.tipo==='caja')body+=formCaja(a,d,dis);
+  else if(a.tipo==='asistencia')body+=formAsis(a,inst,rec?d:null,dis);
   else if(a.tipo==='validar'){const L=conteosDia(inst.per,inst.suc);
     body+=`<div class="list">${['joyeria','piso'].map(t=>{const x=L.find(y=>y.tipo===t);const n=t==='joyeria'?'Conteo de joyería':'Conteo piso de venta';
       return`<article class="act st-${x?(x.val?'ok':'hoy'):'vencida'}"><div class="act-main"><h4>${n} · Suc. ${esc(inst.suc)}</h4><p class="meta">${x?`Registrado por ${esc(nombreCorto(colById(x.cid)))} ${fHora(new Date(x.r.at))}`:'La sucursal no lo ha registrado'}</p></div>
@@ -1239,6 +1241,7 @@ function drawModal(){
   if(a.tipo==='joyeria'||a.tipo==='piso')bindConteo(a.tipo);
   if(a.tipo==='inventario')bindInv(a,inst);
   if(a.tipo==='caja')bindCaja(a);
+  if(a.tipo==='asistencia'&&!ro)bindAsis();
   if(a.tipo==='campos'&&a.lista)bindLista(a);
   if(a.tipo==='campos'&&a.pct){const up=()=>{const o={};(a.campos||[]).forEach(c=>{o[c.k]=($('#cp_'+c.k)||{}).value});const b=$('#cpPct');if(b)b.innerHTML=pctTxt(a,o)};(a.campos||[]).forEach(c=>{const i=$('#cp_'+c.k);if(i)i.addEventListener('input',up)})}
   const sv=$('#mSave');if(sv)sv.onclick=()=>guardar(md);
@@ -1276,6 +1279,25 @@ function formInv(a,inst,d,dis,md){
 function leerInv(a,inst){const F=filasDe(a,inst.suc);const out={rows:{},obs:(($('#ivObs')||{}).value||'').trim(),total:F.length,n:0};
   F.forEach((r,i)=>{const v=f=>String(($(`#iv_${i}_${f}`)||{}).value||'').trim();const x={id:r.id||i+1,l:r.l,lin:r.lin||'',sub:r.sub||'',pr:r.pr||'',sem:r.sem||'',fo:v('fo'),fi:v('fi'),fc:v('fc'),est:v('est')?Number(v('est')):''};out.rows[i]=x;if(filaOk(x))out.n++});
   return out}
+/* ---- reporte de asistencia ---- */
+const AS_C=[['dl','Días laborados'],['fa','Faltas'],['re','Retardos'],['di','Días inhábiles'],['pd','Prima dominical'],['in','Incapacidades'],['va','Vacaciones']];
+function periodoAsis(inst){const lim=dia0(inst.lim);const fin=addD(lim,-((dow(lim)+7-6)%7||7));const ini=addD(fin,-6);return{ini,fin}}
+function colsAsis(){return cfgCols().filter(c=>c.activo!==false)}
+function asisPrefill(inst){const{ini,fin}=periodoAsis(inst);const R={};colsAsis().forEach(c=>{let dl=0,pd=0;for(let d=new Date(ini);d<=fin;d=addD(d,1)){const l=lugarDe(c,d);if(!NO_TRABAJA(l)){dl++;if(dow(d)===7)pd=1}}
+  R[c.id]={inc:true,dl,fa:0,re:0,di:0,pd,in:0,va:0,ob:''}});return R}
+function asisTot(rows){const L=Object.entries(rows||{}).filter(([k,x])=>x&&x.inc);const T={n:L.length};AS_C.forEach(([k])=>T[k]=L.reduce((s,[,x])=>s+num(x[k]),0));
+  const dls=[...new Set(L.map(([,x])=>num(x.dl)))];T.dlTxt=L.length?(dls.length===1?`${dls[0]} por colaborador`:`${T.dl} en total`):'0';const pds=[...new Set(L.map(([,x])=>num(x.pd)))];T.pdTxt=L.length?(pds.length===1?`${pds[0]} por colaborador`:`${T.pd} en total`):'0';return T}
+function formAsis(a,inst,d,dis){const{ini,fin}=periodoAsis(inst);const R=(d&&d.rows)||asisPrefill(inst);const C=colsAsis();const T=asisTot(R);
+  return`<div class="cj-res"><b>Periodo:</b> semana del ${fLarga(ini)} al ${fLarga(fin)} · <b>Periodicidad:</b> semanal</div>
+  <p class="note">Los días laborados y la prima dominical vienen llenos con el rol de trabajo; corrígelos si hubo cambios. Quita la palomita de quien no se reporta en esta nómina.</p>
+  <div class="tbl"><table class="asis"><thead><tr><th>Reportar</th><th>Colaborador</th>${AS_C.map(([k,l])=>`<th class="n">${l}</th>`).join('')}<th>Observaciones</th></tr></thead><tbody>
+  ${C.map(c=>{const x=R[c.id]||{inc:false};return`<tr class="${x.inc?'':'off'}"><td style="text-align:center"><input type="checkbox" data-as="${c.id}" data-k="inc" ${x.inc?'checked':''} ${dis} aria-label="Reportar a ${esc(c.nombre)}"></td><td><b>${esc(c.nombre)}</b><div class="note">${esc(PUESTOS[c.puesto]||c.puesto)}</div></td>
+   ${AS_C.map(([k,l])=>`<td><input class="in n" data-as="${c.id}" data-k="${k}" inputmode="numeric" value="${esc(x[k]??0)}" ${dis||!x.inc?'disabled':''} aria-label="${esc(c.nombre)} ${l}"></td>`).join('')}
+   <td><input class="in" data-as="${c.id}" data-k="ob" value="${esc(x.ob||'')}" ${dis||!x.inc?'disabled':''} aria-label="${esc(c.nombre)} observaciones"></td></tr>`}).join('')}</tbody></table></div>
+  <div class="cj-res" id="asTot">${asisTotHtml(T)}</div>`}
+function asisTotHtml(T){return`<b>Resumen del periodo:</b> ${T.n} colaboradores reportados · días laborados ${T.dlTxt} · faltas ${T.fa} · retardos ${T.re} · días inhábiles ${T.di} · prima dominical ${T.pdTxt} · incapacidades ${T.in} · vacaciones ${T.va}`}
+function leerAsis(){const rows={};$$('[data-as]').forEach(el=>{const id=el.dataset.as,k=el.dataset.k;rows[id]=rows[id]||{};rows[id][k]=k==='inc'?el.checked:k==='ob'?el.value.trim():num(el.value)});return{rows,tot:asisTot(rows)}}
+function bindAsis(){$$('[data-as]').forEach(el=>el.addEventListener(el.type==='checkbox'?'change':'input',()=>{if(el.type==='checkbox'){const tr=el.closest('tr');tr.classList.toggle('off',!el.checked);tr.querySelectorAll('input:not([type=checkbox])').forEach(i=>i.disabled=!el.checked)}const t=$('#asTot');if(t)t.innerHTML=asisTotHtml(leerAsis().tot)}))}
 function bindInv(a,inst){const F=filasDe(a,inst.suc);
   const upd=()=>{let n=0;F.forEach((r,i)=>{const g=f=>String(($(`#iv_${i}_${f}`)||{}).value||'').trim();const x={fo:g('fo'),fi:g('fi'),fc:g('fc'),est:g('est')};const ok=filaOk(x);if(ok)n++;
     const tr=$(`#ivr_${i}`);if(tr)tr.style.background=ok?(x.est==2||x.est==4?'var(--warn-soft)':'var(--good-soft)'):''});
@@ -1439,6 +1461,7 @@ async function guardar(md,parcial){
   else if(a.tipo==='caja'){datos=leerCaja(a);
     const vac=datos.rows.filter(x=>x.sis==='');if(vac.length){flash('mod','err',`Falta capturar lo que debe tener según sistema en: ${vac.map(x=>x.c).join(', ')}. Pon 0 si no tiene.`);return}
     if(datos.dif!==0&&!datos.obs){flash('mod','err',`La caja no cuadra (${datos.dif>0?'sobrante':'faltante'} de ${m2(Math.abs(datos.dif))}). Explica el motivo en Observaciones.`);return}}
+  else if(a.tipo==='asistencia'){datos=leerAsis();if(!datos.tot.n){flash('mod','err','Marca al menos un colaborador para reportar.');return}const{ini,fin}=periodoAsis(inst);datos.ini=iso(ini);datos.fin=iso(fin)}
   else if(a.tipo==='inventario'){datos=leerInv(a,inst);
     const sinCierre=Object.values(datos.rows).filter(x=>(x.est==3||x.est==4)&&!x.fc).length;
     if(sinCierre){flash('mod','err',`Hay ${sinCierre} ${sinCierre===1?'renglón cerrado':'renglones cerrados'} (estatus 3 o 4) sin fecha de cierre.`);return}
@@ -1510,7 +1533,7 @@ async function pdfActividad(cid,rec,a,k){k=k||'mod';
   const lim=rec.lim?new Date(rec.lim):(inst?inst.lim:null);const at=new Date(rec.at);const aTiempo=lim?at<=lim:true;
   const diaria=lim&&(a.frec==='diario'||a.frec==='dias');const suc=rec.suc||(col&&col.suc)||'';
   const doc=pdfNew(t==='inventario'?'l':'p');const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
-  const TIT={joyeria:'CONTEO DIARIO DE JOYERÍA ALMACÉN VENTA',piso:'CONTEO PISO DE VENTA',caja:'CUADRE DE CAJA',inventario:'CALENDARIO DE INVENTARIOS'};
+  const TIT={asistencia:'REPORTE DE ASISTENCIA DE COLABORADORES',joyeria:'CONTEO DIARIO DE JOYERÍA ALMACÉN VENTA',piso:'CONTEO PISO DE VENTA',caja:'CUADRE DE CAJA',inventario:'CALENDARIO DE INVENTARIOS'};
   const titulo=a.id==='metas_diario'?'REPORTE DE METAS DEL DÍA':(TIT[t]||String(a.nombre||rec.nombre||'Reporte').toUpperCase());
   const fRep=lim||at;let y=pdfHead(doc,titulo,`${suc?'Suc. '+suc+' · ':''}${t==='inventario'?String(a.nombre||rec.nombre||''):fLarga(fRep)}`);
   const sec=tx=>{if(y>H-90){doc.addPage();y=60}doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...AZ);doc.text(tx,36,y);y+=6};
@@ -1524,7 +1547,7 @@ async function pdfActividad(cid,rec,a,k){k=k||'mod';
   sec('DATOS DEL REPORTE');
   AT(doc,Object.assign({},kv,{startY:y,body:filas,didParseCell:c=>{if(c.section==='body'&&c.row.index===3&&c.column.index===1){c.cell.styles.fontStyle='bold';c.cell.styles.textColor=aTiempo?[29,134,87]:[168,106,16]}}}));
   y=lastY(doc)+18;
-  const vTit=qv==='enc'?'VALIDACIÓN DE ENCARGADA DE SUCURSAL':'VALIDACIÓN DE COORDINACIÓN';
+  const porDir=qv==='coord'&&col&&col.puesto==='coord';const vTit=qv==='enc'?'VALIDACIÓN DE ENCARGADA DE SUCURSAL':porDir?'VALIDACIÓN DE DIRECCIÓN':'VALIDACIÓN DE COORDINACIÓN';
   if(qv||val){sec(vTit);
     AT(doc,Object.assign({},kv,{startY:y,body:val?[['Estado','Validado','Validó',val.nombre||''],['Fecha de validación',`${fLarga(new Date(val.at))} ${fHora(new Date(val.at))}`,'Nota de validación',val.nota||'Sin nota']]:[['Estado','Pendiente de validación','','']],
       didParseCell:c=>{if(c.section==='body'&&c.row.index===0&&c.column.index===1){c.cell.styles.fontStyle='bold';c.cell.styles.textColor=val?[29,134,87]:[168,106,16]}}}));y=lastY(doc)+18}
@@ -1559,6 +1582,10 @@ async function pdfActividad(cid,rec,a,k){k=k||'mod';
     if(a.lista){const L=(d.lista||[]).filter(r=>r&&Object.values(r).some(v=>String(v??'').trim()!==''));const lc=a.lista.cols||[];sec(String(a.lista.titulo||'Lista').toUpperCase());
       tabla({head:[['#',...lc.map(c=>c.l)]],body:L.length?L.map((r,i)=>[i+1,...lc.map(c=>c.t==='money'?m2(r[c.k]):(r[c.k]??''))]):[['','Sin registros',...lc.slice(1).map(()=>'')]],
         columnStyles:Object.assign({0:{halign:'right',cellWidth:22}},...lc.map((c,i)=>c.t!=='txt'?{[i+1]:{halign:'right'}}:{}))})}}
+  else if(t==='asistencia'){const R=d.rows||{};const T=d.tot||asisTot(R);sec('RESUMEN DEL PERIODO');
+    tabla(Object.assign({},kv,{body:[['Periodo',d.ini?`${fCorta(D0(d.ini))} al ${fCorta(D0(d.fin))}`:'','Periodicidad','Semanal'],['Colaboradores reportados',String(T.n),'Días laborados',T.dlTxt],['Faltas',String(T.fa),'Retardos',String(T.re)],['Días inhábiles',String(T.di),'Prima dominical',T.pdTxt],['Incapacidades',String(T.in),'Vacaciones',String(T.va)]]}));
+    sec('DETALLE POR COLABORADOR');const L=Object.entries(R).filter(([,x])=>x&&x.inc);
+    tabla({head:[['#','Colaborador',...AS_C.map(c=>c[1]),'Observaciones']],body:L.map(([id,x],i)=>{const c=colById(id);return[i+1,c?c.nombre:id,...AS_C.map(([k])=>String(num(x[k]))),x.ob||'']}),styles:{fontSize:8.5,cellPadding:4,textColor:[22,35,42],lineColor:[215,225,230],lineWidth:0.5},columnStyles:Object.assign({0:{halign:'right',cellWidth:20}},...AS_C.map((c,i)=>({[i+2]:{halign:'right'}}))),didParseCell:q=>{if(q.section==='body'&&(q.column.index===3||q.column.index===4)&&String(q.cell.raw)!=='0'){q.cell.styles.textColor=[192,64,44];q.cell.styles.fontStyle='bold'}}})}
   else if(t==='validar'){const L=conteosDia(rec.per,rec.suc);sec('CONTEOS DEL DÍA');
     tabla({head:[['Conteo','Registró','Hora','Validación']],body:['joyeria','piso'].map(tp=>{const x=L.find(z=>z.tipo===tp);return[tp==='joyeria'?'Conteo de joyería':'Conteo piso de venta',x?nombreCorto(colById(x.cid)):'Sin conteo',x?fHora(new Date(x.r.at)):'',x?(x.val?'Validado':'Por validar'):'—']})})}
   texto('COMENTARIO',rec.nota||'Sin comentarios.');
@@ -1570,7 +1597,7 @@ async function pdfActividad(cid,rec,a,k){k=k||'mod';
   if(y>H-110){doc.addPage();y=60}
   y+=44;const xl1=60,xl2=W/2-30,xr1=W/2+30,xr2=W-60;doc.setDrawColor(...GR);doc.setLineWidth(.6);doc.line(xl1,y,xl2,y);doc.line(xr1,y,xr2,y);
   doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(22,35,42);doc.text(col?col.nombre:'',(xl1+xl2)/2,y-6,{align:'center'});if(val)doc.text(`${val.nombre||''} · ${fCorta(new Date(val.at))}`,(xr1+xr2)/2,y-6,{align:'center'});
-  const vLbl=qv==='enc'?'ENCARGADA DE SUCURSAL':'COORDINACIÓN OPERATIVA';
+  const vLbl=qv==='enc'?'ENCARGADA DE SUCURSAL':porDir?'DIRECCIÓN':'COORDINACIÓN OPERATIVA';
   doc.setTextColor(...GR);doc.text('NOMBRE Y FIRMA RESPONSABLE',(xl1+xl2)/2,y+12,{align:'center'});doc.text(val?`VALIDADO EN SISTEMA · ${vLbl}`:(qv?`VALIDACIÓN ${vLbl}`:'REVISÓ COORDINACIÓN OPERATIVA'),(xr1+xr2)/2,y+12,{align:'center'});
   y+=34;
   const fotos=arch.filter(f=>!/pdf/.test(f.tipo||''));const fallas=[];
