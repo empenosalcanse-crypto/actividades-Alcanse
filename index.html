@@ -471,10 +471,10 @@ function draw(){
   const me=meCol();const mgr=esMgr();
   const T=tabsDisponibles();const h=(location.hash||'').slice(1);
   if(T.find(x=>x[0]===h))S.tab=h;if(!S.tab||!T.find(x=>x[0]===S.tab))S.tab=T.length?T[0][0]:null;
-  let nV=0,nPV=0;if(me){nV=ventana(me,now).venc.length+(S.acc||[]).filter(x=>x.colab===me.id&&x.estado==='pendiente').length;nPV=porValidar(me,now).length}
+  let nV=0,nPV=0,nPC=S.admin?porValidarCoord().length:0;if(me){nV=ventana(me,now).venc.length+(S.acc||[]).filter(x=>x.colab===me.id&&x.estado==='pendiente').length;nPV=porValidar(me,now).length}
   document.title=(nV?`(${nV}) `:'')+'Actividades Alcanse';
   $('#who').innerHTML=(me?`<b>${esc(me.nombre)}</b><span>${esc(PUESTOS[me.puesto]||me.puesto)}${me.suc?' · Suc. '+esc(me.suc):''}</span>`:`<b>${esc(S.perfil.nombre||S.perfil.usuario)}</b><span>${S.admin?'Dirección':esAuditor()?'Auditor Supervisor de Operaciones':'Usuario'}</span>`)+cuenta;
-  $('#tabs').innerHTML=T.map(([k,l])=>`<a href="#${k}" ${S.tab===k?'aria-current="page"':''}>${l}${k==='mis'&&nV?` <span class="badge" aria-label="${nV} vencidas">${nV}</span>`:''}${k==='sucursal'&&nPV?` <span class="badge" aria-label="${nPV} por validar">${nPV}</span>`:''}</a>`).join('');
+  $('#tabs').innerHTML=T.map(([k,l])=>`<a href="#${k}" ${S.tab===k?'aria-current="page"':''}>${l}${k==='mis'&&nV?` <span class="badge" aria-label="${nV} vencidas">${nV}</span>`:''}${k==='sucursal'&&nPV?` <span class="badge" aria-label="${nPV} por validar">${nPV}</span>`:''}${k==='equipo'&&nPC?` <span class="badge" aria-label="${nPC} por validar">${nPC}</span>`:''}</a>`).join('');
   if(!cfgCols().length||!cfgActs().length){
     M.innerHTML=`<div class="card"><h3>Todavía no hay equipo ni funciones capturadas</h3><p class="lede">${S.admin?'Agrega colaboradores y actividades en Funciones y equipo.':'Dirección aún no ha cargado las funciones de cada puesto.'}</p></div>`+(S.admin?vCatalogo():'');
     bindCatalogo();bindCuenta();drawModal();return}
@@ -942,6 +942,14 @@ function vMis(col,ro){
 
 /* ============ equipo (coordinación y dirección) ============ */
 function mesesOpts(){const cur=mesOf(ahora());const out=[];let k='2026-11';while(k<=cur){out.push(k);k=nextMes(k)}if(!out.includes(cur))out.push(cur);return out.reverse()}
+function porValidarCoord(){const out=[];if(!S.admin)return out;
+  cfgCols().filter(c=>c.puesto==='coord').forEach(c=>Object.values(S.idx[c.id]||{}).forEach(r=>{const a=actById(r.act);if(!a||!hecho(r)||S.vidx[c.id+'~'+r.key])return;if(esFormato(a.tipo)||a.valCoord)out.push({c,r,a})}));
+  return out.sort((x,y)=>String(y.r.at).localeCompare(String(x.r.at)))}
+function vPorValidarCoord(){const L=porValidarCoord();if(!S.admin)return'';const nom=[...new Set(cfgCols().filter(c=>c.puesto==='coord').map(c=>nombreCorto(c)))].join(', ')||'coordinación';
+  return`<div class="card ${L.length?'acc-mis':''}"><div class="row"><h3 style="flex:1">Por validar de ${esc(nom)} ${L.length?`<span class="badge">${L.length}</span>`:''}</h3></div>
+  <p class="note">Lo que registró como encargada (conteos, cuadre de caja, reporte de metas, inventarios). Ella no puede validar lo suyo; lo valida Dirección.</p>
+  ${L.length?`<div class="tbl"><table><thead><tr><th>Fecha</th><th>Actividad</th><th>Sucursal</th><th>Registrado</th><th></th></tr></thead><tbody>
+  ${L.map(x=>{const lim=x.r.lim?new Date(x.r.lim):null;const at=new Date(x.r.at);return`<tr class="clk" data-open="${esc(x.c.id+'~'+x.r.key)}" tabindex="0"><td>${fCorta(lim||at)}</td><td>${esc(x.r.nombre||x.a.nombre)}</td><td>${esc(x.r.suc||'')}</td><td>${fHora(at)}${lim&&at>lim?' <span class="pill tarde">Tarde</span>':''}</td><td><span class="pill hoy">Abrir y validar</span></td></tr>`}).join('')}</tbody></table></div>`:'<p class="note">Todo validado.</p>'}</div>`}
 function vEquipo(){
   const now=ahora();const mes=S.mesSel||mesOf(now);const cols=cfgCols().filter(c=>c.activo!==false);
   const vinc=new Set(S.perfiles.filter(p=>p.activo).map(p=>p.colab));
@@ -952,7 +960,7 @@ function vEquipo(){
   const vencEq=[];filas.forEach(f=>f.W.venc.filter(i=>i.lim>=addD(dia0(now),-2)).forEach(i=>vencEq.push({c:f.c,i})));vencEq.sort((a,b)=>b.i.lim-a.i.lim);
   const porVal=conteosMes(mesOf(now)).filter(x=>!x.val).length;
   const tot=filas.reduce((a,f)=>({ok:a.ok+f.s.ok+f.s.tarde,t:a.t+f.s.total,v:a.v+f.W.venc.length}),{ok:0,t:0,v:0});
-  return`<div class="sec-h"><h2>Equipo</h2><span class="note">${fLarga(now)}</span></div>
+  return`<div class="sec-h"><h2>Equipo</h2><span class="note">${fLarga(now)}</span></div>${vPorValidarCoord()}
   <div class="tiles"><div class="tile ${tot.v?'bad':'good'}"><span>Vencidas del equipo</span><b>${tot.v}</b></div><div class="tile"><span>Cumplimiento ${mesLabel(mes).toLowerCase()}</span><b>${p0(tot.t?tot.ok/tot.t:NaN)}</b></div><div class="tile ${porVal?'':'good'}"><span>Conteos por validar</span><b>${porVal}</b></div></div>
   <div class="card"><div class="row"><h3 style="flex:1">Cumplimiento por colaborador</h3><label class="fl" for="mesSel" style="flex-direction:row;align-items:center;gap:8px">Mes<select class="sel" id="mesSel" style="width:auto">${mesesOpts().map(m=>`<option value="${m}" ${m===mes?'selected':''}>${mesLabel(m)}</option>`).join('')}</select></label>
   <button class="btn sm" type="button" id="btnPdfMes">Descargar PDF del mes</button></div>${msgHtml('eq')}
@@ -1219,7 +1227,7 @@ function drawModal(){
    ${md.recien?`<div class="alerta ok" role="status"><b>Guardado</b><span>${esc(md.recien)} Descarga el formato en PDF para imprimirlo y firmarlo.</span><button class="btn pri" type="button" id="mPdfTop">Descargar formato PDF</button></div>`:''}
    ${vInfo}${body}<div id="modMsg">${msgHtml('mod')}</div>
    <div class="row">${!ro&&a.tipo==='inventario'&&!hecho(rec)?`<button class="btn" type="button" id="mAvance">Guardar avance</button>`:''}${!ro?`<button class="btn pri" type="button" id="mSave">${a.tipo==='inventario'?(hecho(rec)?'Guardar cambios':'Terminar inventario'):(rec?'Guardar cambios':(st==='vencida'?'Registrar tarde':'Registrar'))}</button>`:''}
-   ${puedeVal?`<input class="in" id="vNota" placeholder="Nota de validación (opcional)" style="flex:1;min-width:180px"><button class="btn pri" type="button" id="mVal">${esFormato(a.tipo)?'Validar conteo':(a.valCoord?'Validar reporte':'Validar')}</button>`:''}
+   ${puedeVal?`<input class="in" id="vNota" placeholder="Nota de validación (opcional)" style="flex:1;min-width:180px"><button class="btn pri" type="button" id="mVal">${esFormato(a.tipo)?'Validar conteo':a.tipo==='caja'?'Validar cuadre':(a.valCoord?'Validar reporte':'Validar')}</button>`:''}
    ${a.frec==='dias'&&a.temas?`<button class="btn" type="button" id="mCal">Calendario del mes (PDF)</button>`:''}
    ${hecho(rec)?`<button class="btn ${md.recien?'pri':''}" type="button" id="mPdf">Descargar formato PDF</button>`:''}</div>
    ${ro&&!propio&&!rec?'<p class="note">Solo la persona responsable puede registrar esta actividad.</p>':''}
