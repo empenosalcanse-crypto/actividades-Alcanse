@@ -183,8 +183,9 @@ td.dif-n{color:var(--bad);font-weight:700}td.dif-p{color:var(--warn);font-weight
 .rc{width:26px;height:26px;border-radius:6px;border:1px solid var(--line);background:var(--surface-2,#eef2f5);font-weight:700;font-size:.75rem;cursor:pointer;display:inline-block;color:var(--ink-2)}
 i.rc{width:16px;height:16px;vertical-align:middle;cursor:default}
 .rc.cen{background:#d6eff8;color:#006f93;border-color:#9fd6ea}.rc.cua{background:#fff1cc;color:#8a5a00;border-color:#ffd677}.rc.des{background:#eceeef;color:#7b7d7e}
-.rc.ov{outline:2px solid var(--ink,#222);outline-offset:-2px}
-.rol-pat select{min-width:104px}.sel.sm{padding:4px 6px;font-size:.82rem}
+.rc.st{background:#fff;color:#9a9c9d;border-style:dashed}
+.rc.rc-ov{outline:2px solid var(--ink,#222);outline-offset:-2px}
+.rol-pat select{min-width:92px;max-width:118px}.sel.sm{padding:4px 6px;font-size:.82rem}
 .adj-prev{flex:1 0 100%;display:block;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden;text-align:center;min-height:60px}
 .adj-prev img{display:block;width:100%;max-height:420px;object-fit:contain;background:#f4f6f8}
 .adj-t{font-size:.72rem;font-weight:700;background:var(--azul);color:#fff;border-radius:5px;padding:2px 6px}
@@ -289,19 +290,26 @@ function periodos(act,a,b){
 }
 function lugarDe(col,d,R){if(!col)return'';R=R||S.roles||{};const k=iso(d);const m=((R.meses||{})[k.slice(0,7)]||{})[col.id];if(m&&m[k])return m[k];
   const pt=(R.patron||{})[col.id];const w=dow(d);if(pt&&pt[w])return pt[w];if((col.descanso||[]).map(Number).includes(w))return'Descanso';return col.suc||''}
-function responsable(act,lug,d){const dd=iso(d);const C=cfgCols().filter(c=>c.activo!==false&&(act.puestos||[]).includes(c.puesto)&&!(c.desde&&c.desde>dd)&&lugarDe(c,d)===lug);
-  if(!C.length)return null;const t=C.find(c=>c.suc===lug);return(t||C[0]).id}
+const NO_TRABAJA=v=>v==='Descanso'||v==='Sin turno';
+function cubrePuestos(col,R){R=R||S.roles||{};return((R.cubre||{})[col.id])||[]}
+function actsCubre(col){const cp=cubrePuestos(col);if(!cp.length)return[];return cfgActs().filter(a=>a.activo!==false&&a.cubre&&!(a.puestos||[]).includes(col.puesto)&&(a.puestos||[]).some(p=>cp.includes(p)))}
+function responsable(act,lug,d){const dd=iso(d);const act0=c=>c.activo!==false&&!(c.desde&&c.desde>dd)&&lugarDe(c,d)===lug;
+  const C=cfgCols().filter(c=>act0(c)&&(act.puestos||[]).includes(c.puesto));
+  if(C.length){const t=C.find(c=>c.suc===lug);return(t||C[0]).id}
+  const K=cfgCols().filter(c=>act0(c)&&cubrePuestos(c).some(p=>(act.puestos||[]).includes(p)));return K.length?K[0].id:null}
 function instancias(col,a,b){
   const res=[];const desde=col.desde?D0(col.desde):null;
-  for(const act of actsDe(col)){
+  const AJ=actById('conteo_joyeria');
+  for(const act of actsDe(col).concat(actsCubre(col))){
     const diaFijo=act.frec==='diario'||act.frec==='dias'||act.frec==='semanal';
     for(const p of periodos(act,a,b)){
       if(desde&&p.lim<desde)continue;
-      let lug=col.suc||'';
-      if(diaFijo&&!act.porSuc){const dd=dia0(p.lim);lug=lugarDe(col,dd);
-        if(lug==='Descanso'){if(act.frec==='semanal'&&!act.cubre)lug=col.suc||'';else continue}
-        if(act.cubre&&lug&&responsable(act,lug,dd)!==col.id)continue}
-      const sucs=act.porSuc?SUCS:[null];
+      let lug=col.suc||'';const dd=dia0(p.lim);
+      if(diaFijo&&!act.porSuc){lug=lugarDe(col,dd);
+        if(NO_TRABAJA(lug)){if(act.frec==='semanal'&&!act.cubre)lug=col.suc||'';else continue}
+        if(act.cubre&&responsable(act,lug,dd)!==col.id)continue}
+      let sucs=act.porSuc?SUCS:[null];
+      if(act.porSuc&&diaFijo){if(NO_TRABAJA(lugarDe(col,dd)))continue;if(act.tipo==='validar'&&AJ)sucs=sucs.filter(su=>responsable(AJ,su,dd)!==col.id)}
       for(const s of sucs){const key=act.id+'__'+p.per+(s?'__'+SUCC[s]:'');
         res.push({key,act,per:p.per,suc:s||lug||'',porSuc:!!s,ini:p.ini,lim:p.lim,mes:mesOf(p.lim),col:col.id})}
     }
@@ -464,7 +472,7 @@ function draw(){
   bindMain();bindCuenta();drawModal();
 }
 /* ============ rol de trabajo ============ */
-const LUG_ABR={'Centro':'C','Cuauhtémoc':'Q','Descanso':'D'};const LUG_CIC=['','Centro','Cuauhtémoc','Descanso'];
+const LUG_ABR={'Centro':'C','Cuauhtémoc':'Q','Descanso':'D','Sin turno':'–'};const LUG_CIC=['','Centro','Cuauhtémoc','Descanso','Sin turno'];
 function rolesDraft(){if(!S.draftRoles)S.draftRoles=JSON.parse(JSON.stringify(S.roles||{patron:{},meses:{}}));S.draftRoles.patron=S.draftRoles.patron||{};S.draftRoles.meses=S.draftRoles.meses||{};return S.draftRoles}
 function rolMesesOpts(){const cur=mesOf(ahora());return[prevMes(cur),cur,nextMes(cur),nextMes(nextMes(cur))]}
 function colsRol(){return cfgCols().filter(c=>c.activo!==false)}
@@ -472,25 +480,26 @@ function vRoles(){
   const R=rolesDraft();const mes=S.rolMes||mesOf(ahora());const[y,m]=mes.split('-').map(Number);const nd=lastDay(y,m);const C=colsRol();const M=R.meses[mes]||{};
   const dl=['','L','M','M','J','V','S','D'];
   const pat=`<div class="card"><h3>Patrón semanal</h3><p class="note">Dónde trabaja normalmente cada quien por día de la semana. "Su sucursal" usa la sucursal de trabajo de su ficha. El mes se llena con este patrón y abajo ajustas los días que cambien.</p>
-   <div class="tbl"><table class="rol-pat"><thead><tr><th>Colaborador</th>${DIAS.slice(1).map(d=>`<th>${d.slice(0,3)}</th>`).join('')}</tr></thead><tbody>
+   <div class="tbl"><table class="rol-pat"><thead><tr><th>Colaborador</th>${DIAS.slice(1).map(d=>`<th>${d.slice(0,3)}</th>`).join('')}<th title="Hace las tareas de encargada cuando no está la encargada">Cubre encargada</th></tr></thead><tbody>
    ${C.map(c=>`<tr><td><b>${esc(nombreCorto(c))}</b><div class="note">${esc(PUESTOS[c.puesto]||c.puesto)}${c.suc?' · '+esc(c.suc):''}</div></td>${[1,2,3,4,5,6,7].map(w=>{const v=((R.patron[c.id]||{})[w])||'';
-     return`<td><select class="sel sm" data-pat="${esc(c.id)}" data-w="${w}" aria-label="${esc(nombreCorto(c))} ${DIAS[w]}"><option value="" ${!v?'selected':''}>${c.suc?'Su sucursal':'—'}</option>${['Centro','Cuauhtémoc','Descanso'].map(o=>`<option ${v===o?'selected':''}>${o}</option>`).join('')}</select></td>`}).join('')}</tr>`).join('')}
+     return`<td><select class="sel sm" data-pat="${esc(c.id)}" data-w="${w}" aria-label="${esc(nombreCorto(c))} ${DIAS[w]}"><option value="" ${!v?'selected':''}>${c.suc?'Su sucursal':'—'}</option>${['Centro','Cuauhtémoc','Descanso','Sin turno'].map(o=>`<option ${v===o?'selected':''}>${o}</option>`).join('')}</select></td>`}).join('')}<td style="text-align:center">${c.puesto!=='enc'?`<input type="checkbox" data-cubre="${esc(c.id)}" ${cubrePuestos(c,R).includes('enc')?'checked':''} aria-label="${esc(nombreCorto(c))} cubre como encargada">`:''}</td></tr>`).join('')}
    </tbody></table></div></div>`;
   const cal=`<div class="card"><div class="row"><h3 style="flex:1">Rol de ${mesLabel(mes)}</h3><label class="fl" for="rolMes" style="flex-direction:row;align-items:center;gap:8px">Mes<select class="sel" id="rolMes" style="width:auto">${rolMesesOpts().map(k=>`<option value="${k}" ${k===mes?'selected':''}>${mesLabel(k)}</option>`).join('')}</select></label></div>
-   <p class="note">Toca un día para cambiarlo: Centro → Cuauhtémoc → Descanso → como el patrón. Los días cambiados se ven con borde.</p>
+   <p class="note">Toca un día para cambiarlo: Centro → Cuauhtémoc → Descanso → Sin turno → como el patrón. Los días cambiados se ven con borde.</p>
    <div style="overflow-x:auto"><table class="rol-cal"><thead><tr><th>Colaborador</th>${Array.from({length:nd},(_,k)=>{const d=new Date(y,m-1,k+1);const w=dow(d);return`<th class="${w>=6?'fin':''}">${dl[w]}<br>${k+1}</th>`}).join('')}</tr></thead><tbody>
    ${C.map(c=>`<tr><td><b>${esc(nombreCorto(c))}</b></td>${Array.from({length:nd},(_,k)=>{const d=new Date(y,m-1,k+1);const ky=iso(d);const ov=(M[c.id]||{})[ky];const v=lugarDe(c,d,R);const ab=LUG_ABR[v]||'·';
-     return`<td><button type="button" class="rc ${v==='Descanso'?'des':v==='Centro'?'cen':v==='Cuauhtémoc'?'cua':''} ${ov?'ov':''}" data-rc="${esc(c.id)}" data-d="${ky}" title="${esc(nombreCorto(c))} ${k+1}: ${esc(v||'Sin sucursal')}${ov?' (cambio)':''}">${ab}</button></td>`}).join('')}</tr>`).join('')}
+     return`<td><button type="button" class="rc ${v==='Descanso'?'des':v==='Centro'?'cen':v==='Cuauhtémoc'?'cua':v==='Sin turno'?'st':''} ${ov?'rc-ov':''}" data-rc="${esc(c.id)}" data-d="${ky}" title="${esc(nombreCorto(c))} ${k+1}: ${esc(v||'Sin sucursal')}${ov?' (cambio)':''}">${ab}</button></td>`}).join('')}</tr>`).join('')}
    </tbody></table></div>
-   <div class="legend"><span><i class="rc cen"></i>C · Centro</span><span><i class="rc cua"></i>Q · Cuauhtémoc</span><span><i class="rc des"></i>D · Descanso</span></div></div>`;
+   <div class="legend"><span><i class="rc cen"></i>C · Centro</span><span><i class="rc cua"></i>Q · Cuauhtémoc</span><span><i class="rc des"></i>D · Descanso</span><span><i class="rc st"></i>– · Sin turno en sucursal</span></div></div>`;
   return`<div class="sec-h"><h2>Rol de trabajo</h2><span class="note">Dónde trabaja cada colaborador cada día</span></div>${msgHtml('rol')}
-  <div class="alerta" role="note"><b>Cómo funciona</b><span>En su día de descanso no se le asignan tareas. Las tareas de la sucursal (metas, conteos, cuadre de caja, llamadas, publicaciones, cargar tecnología y exhibir) las hace quien trabaje ese día en esa sucursal, y las valida la encargada de esa sucursal.</span></div>
+  <div class="alerta" role="note"><b>Cómo funciona</b><span>En descanso o sin turno no se le asignan tareas. Las tareas de la sucursal (metas, conteos, cuadre de caja, llamadas, publicaciones, cargar tecnología y exhibir) las hace quien trabaje ese día en esa sucursal. Si no está la encargada, las hace quien tenga marcado "Cubre como encargada" (por ejemplo, Sinaí).</span></div>
   <div class="row"><button class="btn pri" type="button" id="rolSave">Guardar rol</button>${M&&Object.keys(M).length?`<button class="btn" type="button" id="rolClear">Quitar cambios de ${mesLabel(mes).toLowerCase()}</button>`:''}${S.rolSucio?'<span class="note">Hay cambios sin guardar.</span>':''}</div>
   ${cal}${pat}`;
 }
 function bindRoles(){
   const R=rolesDraft();const sucio=()=>{S.rolSucio=true;render()};
   const rm=$('#rolMes');if(rm)rm.onchange=()=>{S.rolMes=rm.value;render()};
+  $$('[data-cubre]').forEach(el=>el.onchange=()=>{R.cubre=R.cubre||{};const id=el.dataset.cubre;if(el.checked)R.cubre[id]=['enc'];else delete R.cubre[id];sucio()});
   $$('[data-pat]').forEach(el=>el.onchange=()=>{const id=el.dataset.pat,w=el.dataset.w;R.patron[id]=R.patron[id]||{};if(el.value)R.patron[id][w]=el.value;else delete R.patron[id][w];sucio()});
   $$('[data-rc]').forEach(el=>el.onclick=()=>{const id=el.dataset.rc,ky=el.dataset.d,mes=ky.slice(0,7);R.meses[mes]=R.meses[mes]||{};const M=R.meses[mes];M[id]=M[id]||{};
     const cur=M[id][ky]||'';const nx=LUG_CIC[(LUG_CIC.indexOf(cur)+1)%LUG_CIC.length];if(nx)M[id][ky]=nx;else delete M[id][ky];if(!Object.keys(M[id]).length)delete M[id];sucio()});
