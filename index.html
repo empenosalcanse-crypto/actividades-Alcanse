@@ -84,6 +84,7 @@ footer{max-width:1040px;margin:0 auto;padding:0 16px 28px;color:var(--muted);fon
 
 .btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer;min-height:40px;display:inline-flex;align-items:center;gap:6px}
 .btn:hover{border-color:var(--azul)}
+.btn.danger{color:#c0402c;border-color:#e8b4aa}
 .btn.pri{background:var(--azul);border-color:var(--azul);color:#fff}
 .btn.pri:hover{background:var(--azul-ink)}
 .btn.dang{color:var(--bad);border-color:var(--bad)}
@@ -187,6 +188,16 @@ i.rc{width:16px;height:16px;vertical-align:middle;cursor:default}
 .rc.st{background:#fff;color:#9a9c9d;border-style:dashed}
 .rc.rc-ov{outline:2px solid var(--ink,#222);outline-offset:-2px}
 .rol-pat select{min-width:92px;max-width:118px}.sel.sm{padding:4px 6px;font-size:.82rem}
+.aud-it{border-top:1px solid var(--line);padding:10px 0;display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center}
+.aud-it.no{background:#fdf1ee;margin:0 -12px;padding:10px 12px}
+.aud-l{font-weight:600;font-size:.92rem}.aud-x{grid-column:1/-1;display:flex;gap:8px}.aud-x .in{flex:1}
+.aud-fs{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap}.aud-fs img{width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--line);background:#f4f6f8}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg-b{border:0;background:var(--surface,#fff);padding:7px 11px;font:inherit;font-size:.82rem;font-weight:600;cursor:pointer;color:var(--ink-2);border-left:1px solid var(--line)}.seg-b:first-child{border-left:0}
+.seg-b.on.si{background:#dff3e8;color:#1d8657}.seg-b.on.no{background:#f9dcd6;color:#c0402c}.seg-b.on.na{background:#eceeef;color:#545556}
+.aud-res .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.aud-res .kpi{display:flex;flex-direction:column}.aud-res .kpi span{font-size:.78rem;color:var(--ink-2);text-transform:uppercase;letter-spacing:.04em}.aud-res .kpi b{font-size:1.5rem}
+.aud-res b.good{color:#1d8657}.aud-res b.warn{color:#a86a10}.aud-res b.bad{color:#c0402c}
+@media(max-width:640px){.aud-it{grid-template-columns:1fr}}
 .adj-prev{flex:1 0 100%;display:block;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden;text-align:center;min-height:60px}
 .adj-prev img{display:block;width:100%;max-height:420px;object-fit:contain;background:#f4f6f8}
 .adj-t{font-size:.72rem;font-weight:700;background:var(--azul);color:#fff;border-radius:5px;padding:2px 6px}
@@ -376,7 +387,7 @@ async function cargarTodo(silencioso){
   try{
     S.uid=S.session.user.id;const c=cutoffNeeded();
     const[pf,cf,rg,vl]=await Promise.all([
-      S.sb.from('perfiles').select('user_id,usuario,colab,rol,activo'),
+      S.sb.from('perfiles').select('user_id,usuario,colab,rol,activo,nombre'),
       S.sb.from('config').select('id,data'),
       todas('registros','colab,key,mes,data,user_id,at',c),
       todas('validaciones','colab,key,mes,data,user_id',c)]);
@@ -384,6 +395,7 @@ async function cargarTodo(silencioso){
     S.perfiles=pf.data||[];S.perfil=S.perfiles.find(p=>p.user_id===S.uid)||null;S.admin=!!(S.perfil&&S.perfil.rol==='admin');
     const o={};(cf.data||[]).forEach(r=>{o[r.id]=r.data});S.equipo=o.equipo||null;S.catalogo=o.catalogo||null;S.roles=o.roles||{patron:{},meses:{}};
     S.rows=rg;S.vrows=vl;S.cutoff=c;S.cfgLoaded=true;
+    if(verAud()){const au=await S.sb.from('auditorias').select('*').order('fecha',{ascending:false}).order('creado',{ascending:false}).limit(300);if(!au.error)S.aud=au.data||[]}
     S.sync=['ok','Datos al día · '+fHora(ahora())];
   }catch(e){S.sync=['off','No se pudieron cargar los datos. Revisa tu conexión; se reintenta cada minuto.']}
   S.cargando=false;render();
@@ -427,6 +439,7 @@ function vSucursal(me){
 }
 function tabsDisponibles(){
   const me=meCol(),mgr=esMgr(),t=[];
+  if(esAuditor()){t.push(['auditorias','Auditorías']);return t}
   if(me)t.push(['mis','Mis actividades']);
   if(mgr)t.push(['equipo','Equipo']);
   if(me&&me.puesto==='enc'&&(miEquipoSuc(me).length||actsValEnc(me).length))t.push(['sucursal','Mi sucursal']);
@@ -436,6 +449,7 @@ function tabsDisponibles(){
   if(mgr)t.push(['roles','Rol de trabajo']);
   if(S.admin)t.push(['catalogo','Funciones y equipo']);
   if(S.admin)t.push(['usuarios','Usuarios']);
+  if(S.admin)t.push(['auditorias','Auditorías']);
   return t;
 }
 function draw(){
@@ -453,12 +467,12 @@ function draw(){
   if(T.find(x=>x[0]===h))S.tab=h;if(!S.tab||!T.find(x=>x[0]===S.tab))S.tab=T.length?T[0][0]:null;
   let nV=0,nPV=0;if(me){nV=ventana(me,now).venc.length;nPV=porValidar(me,now).length}
   document.title=(nV?`(${nV}) `:'')+'Actividades Alcanse';
-  $('#who').innerHTML=(me?`<b>${esc(me.nombre)}</b><span>${esc(PUESTOS[me.puesto]||me.puesto)}${me.suc?' · Suc. '+esc(me.suc):''}</span>`:`<b>${S.admin?'Dirección':'Usuario'} · ${esc(S.perfil.usuario)}</b>`)+cuenta;
+  $('#who').innerHTML=(me?`<b>${esc(me.nombre)}</b><span>${esc(PUESTOS[me.puesto]||me.puesto)}${me.suc?' · Suc. '+esc(me.suc):''}</span>`:`<b>${esc(S.perfil.nombre||S.perfil.usuario)}</b><span>${S.admin?'Dirección':esAuditor()?'Auditor Supervisor de Operaciones':'Usuario'}</span>`)+cuenta;
   $('#tabs').innerHTML=T.map(([k,l])=>`<a href="#${k}" ${S.tab===k?'aria-current="page"':''}>${l}${k==='mis'&&nV?` <span class="badge" aria-label="${nV} vencidas">${nV}</span>`:''}${k==='sucursal'&&nPV?` <span class="badge" aria-label="${nPV} por validar">${nPV}</span>`:''}</a>`).join('');
   if(!cfgCols().length||!cfgActs().length){
     M.innerHTML=`<div class="card"><h3>Todavía no hay equipo ni funciones capturadas</h3><p class="lede">${S.admin?'Agrega colaboradores y actividades en Funciones y equipo.':'Dirección aún no ha cargado las funciones de cada puesto.'}</p></div>`+(S.admin?vCatalogo():'');
     bindCatalogo();bindCuenta();drawModal();return}
-  if(!me&&!mgr){M.innerHTML=`<div class="card"><h3>Tu usuario no tiene colaborador asignado</h3><p class="lede">Pide a Dirección que relacione tu usuario con tu nombre en el sistema.</p></div>`;bindCuenta();drawModal();return}
+  if(!me&&!mgr&&!esAuditor()){M.innerHTML=`<div class="card"><h3>Tu usuario no tiene colaborador asignado</h3><p class="lede">Pide a Dirección que relacione tu usuario con tu nombre en el sistema.</p></div>`;bindCuenta();drawModal();return}
   let V='';
   if(S.tab==='mis')V=vMis(me,false);
   else if(S.tab==='equipo')V=S.ver&&colById(S.ver)?vPersona(colById(S.ver)):vEquipo();
@@ -466,12 +480,118 @@ function draw(){
   else if(S.tab==='historial')V=vHistorial(me);
   else if(S.tab==='catalogo')V=vCatalogo();
   else if(S.tab==='roles')V=vRoles();
+  else if(S.tab==='auditorias')V=vAuditorias();
   else if(S.tab==='usuarios')V=vUsuarios();
   else if(S.tab==='ranking')V=vRanking();
   else if(S.tab==='sucursal')V=S.ver&&miEquipoSuc(me).some(c=>c.id===S.ver)?vPersona(colById(S.ver)):vSucursal(me);
   M.innerHTML=msgHtml('main')+V;
   bindMain();bindCuenta();drawModal();
 }
+/* ============ auditorías (solo Dirección y auditor) ============ */
+const AUD_B=[
+ {k:'seg',t:'Seguridad',items:[['vitrinas','Vitrinas cerradas',1],['puertas','Puertas de acceso a las oficinas cerradas',1],['cfuerte','Cajas fuertes cerradas',1],['docs','Sin documentos a la vista que no se estén usando'],['prod','Productos en su lugar (no fuera de vitrinas, sobre aparadores ni fuera de sus cajas)'],['dinero','Documentos y dinero dentro de la caja de cobro o de la caja fuerte',1],['alim','Sin alimentos ni bebidas en áreas de trabajo, cerca de equipos, electricidad o documentos']]},
+ {k:'hig',t:'Higiene',items:[['limp','Limpieza de las áreas y botes de basura ubicados'],['expo','Limpieza de los espacios de exposición de productos'],['precios','Precios y descripciones de producto visibles'],['permisos','Permisos y licencias visibles'],['promos','Promociones visibles'],['rutas','Rutas visibles'],['despejo','Áreas despejadas'],['uniforme','Uniforme limpio y con logotipo de la empresa'],['present','Presentación personal: sin tatuajes expuestos, uñas, joyas, audífonos ni exceso de maquillaje; barba alineada y cabello ordenado']]},
+ {k:'eq',t:'Funcionamiento de equipo y herramientas',items:[['comp','Equipos de cómputo'],['comu','Equipos de comunicación'],['elec','Equipos electrónicos'],['valua','Herramientas de valuación'],['ofi','Herramientas de oficina'],['serv','Iluminación, clima y agua']]},
+ {k:'ext',t:'Comunicación exterior',items:[['marca','Presencia y visualización de la marca'],['prodext','Exposición exterior de productos'],['promoext','Exposición de promociones'],['frente','Iluminación y visualización del frente de la sucursal'],['acceso','Acceso a la sucursal despejado'],['cancion','Comunicación auditiva: la canción de la empresa']]}];
+const esAuditor=()=>!!(S.perfil&&S.perfil.rol==='auditor');
+const verAud=()=>S.admin||esAuditor();
+const nombrePerfil=uid=>{const p=(S.perfiles||[]).find(x=>x.user_id===uid);return p?(p.nombre||p.usuario):''};
+function audPres(a){const d=a.data||{};if(d.pres&&d.pres.length)return d.pres;const f=D0(a.fecha);
+  return cfgCols().filter(c=>c.activo!==false&&!(c.desde&&c.desde>a.fecha)&&lugarDe(c,f)===a.suc).map(c=>({id:c.id,nombre:c.nombre,puesto:PUESTOS[c.puesto]||c.puesto}))}
+function audItems(a){const L=[];AUD_B.forEach(b=>b.items.forEach(([k,l,cr])=>L.push({b:b.k,k:b.k+'.'+k,l,cr:!!cr})));
+  audPres(a).forEach(p=>{L.push({b:'pres',k:'pres.p_'+p.id,l:`${p.nombre}: presente en su horario`});L.push({b:'pres',k:'pres.f_'+p.id,l:`${p.nombre}: en su puesto, haciendo su función`})});return L}
+function audCalc(a){const it=(a.data||{}).it||{};const L=audItems(a);const por={};let si=0,no=0,crit=[],falta=0;
+  L.forEach(x=>{const v=(it[x.k]||{}).v;por[x.b]=por[x.b]||{si:0,no:0};if(v==='si'){si++;por[x.b].si++}else if(v==='no'){no++;por[x.b].no++;if(x.cr)crit.push(x.l)}else if(v!=='na')falta++});
+  const pct=(si+no)?Math.round(si/(si+no)*1000)/10:null;Object.values(por).forEach(o=>o.pct=(o.si+o.no)?Math.round(o.si/(o.si+o.no)*1000)/10:null);
+  const nivel=crit.length?['Con falta crítica','bad']:pct==null?['Sin calificar','']:pct>=90?['Excelente','good']:pct>=80?['Aceptable','warn']:['No aceptable','bad'];
+  return{pct,por,crit,falta,nivel,total:L.length}}
+function vAuditorias(){
+  if(!verAud())return'<div class="card"><p class="note">No tienes acceso a esta sección.</p></div>';
+  const sel=S.audSel&&(S.aud||[]).find(x=>x.id===S.audSel);if(sel)return vAudEditor(sel);
+  const L=S.aud||[];
+  return`<div class="sec-h"><h2>Auditorías</h2><span class="note">Visitas no anunciadas · solo las ven Dirección y el auditor</span></div>${msgHtml('aud')}
+  <div class="card"><h3>Nueva auditoría situacional</h3><p class="note">Se registra la hora de llegada al iniciar. La lista de personal se arma con el rol de trabajo del día.</p>
+   <div class="row"><label class="fl" for="audSuc" style="flex:0 1 240px">Sucursal<select class="sel" id="audSuc">${SUCS.map(s=>`<option>${s}</option>`).join('')}</select></label><button class="btn pri" type="button" id="audNueva" style="align-self:flex-end">Iniciar auditoría</button></div></div>
+  ${L.length?`<div class="tbl"><table><thead><tr><th>Fecha</th><th>Sucursal</th><th>Auditor</th><th>Llegada</th><th class="n">Calificación</th><th>Resultado</th><th>Estado</th><th></th></tr></thead><tbody>
+   ${L.map(a=>{const c=audCalc(a);const d=a.data||{};return`<tr class="clk" data-aud="${a.id}" tabindex="0"><td>${fCorta(D0(a.fecha))}</td><td>${esc(a.suc)}</td><td>${esc(nombrePerfil(a.auditor))}</td><td>${esc(d.llegada||'')}</td><td class="n"><b>${c.pct==null?'—':c.pct+'%'}</b></td><td><span class="pill ${c.nivel[1]==='good'?'ok':c.nivel[1]==='warn'?'hoy':c.nivel[1]==='bad'?'vencida':''}">${c.nivel[0]}</span>${c.crit.length?` <span class="note">${c.crit.length} crítico${c.crit.length>1?'s':''}</span>`:''}</td><td>${a.estado==='cerrada'?'<span class="pill ok">Cerrada</span>':'<span class="pill hoy">En proceso</span>'}</td><td><button class="btn sm" type="button" data-audpdf="${a.id}">PDF</button></td></tr>`}).join('')}
+  </tbody></table></div>`:'<div class="card"><p class="note">Aún no hay auditorías registradas.</p></div>'}`;
+}
+function audBtn(k,v,cur,ro){const lab={si:'Cumple',no:'No cumple',na:'N.A.'}[v];return`<button type="button" class="seg-b ${cur===v?'on '+v:''}" data-av="${esc(k)}" data-v="${v}" ${ro?'disabled':''} aria-pressed="${cur===v}">${lab}</button>`}
+function audItemHtml(a,x,ro){const it=((a.data||{}).it||{})[x.k]||{};const fotos=it.f||[];
+  return`<div class="aud-it ${it.v==='no'?'no':''}"><div class="aud-l">${esc(x.l)}${x.cr?' <span class="pill vencida">Crítico</span>':''}</div>
+   <div class="seg">${audBtn(x.k,'si',it.v,ro)}${audBtn(x.k,'no',it.v,ro)}${audBtn(x.k,'na',it.v,ro)}</div>
+   <div class="aud-x"><input class="in" data-ac="${esc(x.k)}" placeholder="${it.v==='no'?'Describe lo que encontraste':'Comentario (opcional)'}" value="${esc(it.c||'')}" ${ro?'disabled':''}>
+   ${ro?'':`<button type="button" class="btn sm" data-af="${esc(x.k)}">📷 Foto</button>`}</div>
+   ${fotos.length?`<div class="aud-fs">${fotos.map((f,i)=>`<a href="#" data-aimg="${esc(f.path)}" target="_blank" rel="noopener"><img alt="Foto ${i+1} de ${esc(x.l)}" data-aimgsrc="${esc(f.path)}"></a>`).join('')}</div>`:''}</div>`}
+function vAudEditor(a){const d=a.data||{};const c=audCalc(a);const ro=a.estado==='cerrada'||!(S.admin||a.auditor===S.uid);const L=audItems(a);
+  const bloque=(k,t)=>{const xs=L.filter(x=>x.b===k);const p=c.por[k]||{};return`<div class="card"><div class="row"><h3 style="flex:1">${esc(t)}</h3><span class="pill ${p.pct==null?'':p.pct>=90?'ok':p.pct>=80?'hoy':'vencida'}">${p.pct==null?'Sin calificar':p.pct+'%'}</span></div>${xs.length?xs.map(x=>audItemHtml(a,x,ro)).join(''):'<p class="note">No hay personal en el rol de trabajo para esta sucursal ese día.</p>'}</div>`};
+  return`<div class="row"><button class="btn" type="button" id="audVolver">← Auditorías</button><span class="note" id="audEstado">${S.audGuardando?'Guardando…':'Cambios guardados'}</span></div>
+  <div class="sec-h"><h2>Auditoría situacional · Suc. ${esc(a.suc)}</h2><span class="note">${fLarga(D0(a.fecha))} · llegada ${esc(d.llegada||'')}${d.salida?' · salida '+esc(d.salida):''} · ${esc(nombrePerfil(a.auditor))}</span></div>${msgHtml('aud')}
+  <div class="card aud-res"><div class="kpis"><div class="kpi"><span>Calificación general</span><b class="${c.nivel[1]}">${c.pct==null?'—':c.pct+'%'}</b></div><div class="kpi"><span>Resultado</span><b class="${c.nivel[1]}">${c.nivel[0]}</b></div><div class="kpi"><span>Faltas críticas</span><b class="${c.crit.length?'bad':'good'}">${c.crit.length}</b></div><div class="kpi"><span>Puntos sin revisar</span><b>${c.falta} de ${c.total}</b></div></div>
+   ${c.crit.length?`<p class="note"><b>Críticos:</b> ${c.crit.map(esc).join(' · ')}</p>`:''}</div>
+  ${bloque('pres','Presencia y ocupacionalidad')}${AUD_B.map(b=>bloque(b.k,b.t)).join('')}
+  <div class="card"><label class="fl" for="audObs">Observaciones generales<textarea class="in" id="audObs" rows="3" ${ro?'disabled':''} placeholder="Resumen de la visita, acuerdos con la encargada, etc.">${esc(d.obs||'')}</textarea></label></div>
+  <div class="row">${a.estado!=='cerrada'&&!ro?`<button class="btn pri" type="button" id="audCerrar">Cerrar auditoría</button>`:''}${a.estado==='cerrada'&&S.admin?`<button class="btn" type="button" id="audReabrir">Reabrir (Dirección)</button>`:''}<button class="btn" type="button" data-audpdf="${a.id}">Descargar PDF</button>${S.admin||(!ro&&a.estado!=='cerrada')?`<button class="btn danger" type="button" id="audBorrar">Eliminar</button>`:''}</div>
+  <input id="audFoto" class="vh" type="file" accept="image/*" capture="environment">`;
+}
+async function audGuardar(a,extra){S.audGuardando=true;const e=$('#audEstado');if(e)e.textContent='Guardando…';
+  const patch=Object.assign({data:a.data,actualizado:ahora().toISOString()},extra||{});
+  const{error}=await S.sb.from('auditorias').update(patch).eq('id',a.id);S.audGuardando=false;
+  if(error){flash('aud','err','No se guardó: '+errText(error));return false}Object.assign(a,extra||{});const e2=$('#audEstado');if(e2)e2.textContent='Cambios guardados · '+fHora(ahora());return true}
+function audLater(a){clearTimeout(S.audT);S.audT=setTimeout(()=>audGuardar(a),700)}
+async function audUrl(path){S.audUrls=S.audUrls||{};if(S.audUrls[path])return S.audUrls[path];const{data}=await S.sb.storage.from('auditorias').createSignedUrl(path,3600);if(data)S.audUrls[path]=data.signedUrl;return data?data.signedUrl:null}
+function bindAuditorias(){
+  $$('[data-audpdf]').forEach(b=>b.onclick=e=>{e.stopPropagation();const a=(S.aud||[]).find(x=>x.id===b.dataset.audpdf);if(a)pdfAuditoria(a)});
+  $$('[data-aud]').forEach(r=>{const go=()=>{S.audSel=r.dataset.aud;render();window.scrollTo(0,0)};r.onclick=go;r.onkeydown=e=>{if(e.key==='Enter')go()}});
+  const nv=$('#audNueva');if(nv)nv.onclick=async()=>{nv.disabled=true;const now=ahora();const suc=$('#audSuc').value;
+    const row={suc,fecha:iso(now),auditor:S.uid,estado:'borrador',data:{llegada:fHora(now),it:{},obs:''}};row.data.pres=audPres(row);
+    const{data,error}=await S.sb.from('auditorias').insert(row).select().single();nv.disabled=false;
+    if(error){flash('aud','err',errText(error));return}S.aud=[data,...(S.aud||[])];S.audSel=data.id;render();window.scrollTo(0,0)};
+  const a=S.audSel&&(S.aud||[]).find(x=>x.id===S.audSel);if(!a)return;a.data=a.data||{};a.data.it=a.data.it||{};
+  const vb=$('#audVolver');if(vb)vb.onclick=()=>{S.audSel=null;render()};
+  $$('[data-av]').forEach(b=>b.onclick=()=>{const k=b.dataset.av;const it=a.data.it[k]=a.data.it[k]||{};it.v=it.v===b.dataset.v?undefined:b.dataset.v;const y=window.scrollY;render();window.scrollTo(0,y);audLater(a)});
+  $$('[data-ac]').forEach(i=>i.oninput=()=>{const it=a.data.it[i.dataset.ac]=a.data.it[i.dataset.ac]||{};it.c=i.value;audLater(a)});
+  const ob=$('#audObs');if(ob)ob.oninput=()=>{a.data.obs=ob.value;audLater(a)};
+  const fi=$('#audFoto');$$('[data-af]').forEach(b=>b.onclick=()=>{S.audFotoK=b.dataset.af;fi.click()});
+  if(fi)fi.onchange=async()=>{const f=fi.files[0];fi.value='';if(!f)return;const k=S.audFotoK;flash('aud','ok','Subiendo foto…');
+    try{const g=await comprimir(f);const path=`${a.id}/${k.replace(/[^a-z0-9._-]/gi,'_')}_${Date.now().toString(36)}.jpg`;
+      const{error}=await S.sb.storage.from('auditorias').upload(path,g,{contentType:g.type||'image/jpeg',upsert:false});if(error)throw error;
+      const it=a.data.it[k]=a.data.it[k]||{};it.f=[...(it.f||[]),{path,nombre:f.name,at:ahora().toISOString()}];await audGuardar(a);flash('aud','ok','Foto agregada.');const y=window.scrollY;render();window.scrollTo(0,y)}
+    catch(e){flash('aud','err','No se pudo subir la foto: '+errText(e))}};
+  $$('[data-aimgsrc]').forEach(im=>audUrl(im.dataset.aimgsrc).then(u=>{if(u){im.src=u;const l=im.closest('a');if(l)l.href=u}}));
+  const cz=$('#audCerrar');if(cz)cz.onclick=async()=>{const c=audCalc(a);if(c.falta){flash('aud','err',`Faltan ${c.falta} punto(s) por revisar. Marca Cumple, No cumple o N.A. en todos.`);return}
+    const sinDesc=audItems(a).filter(x=>(a.data.it[x.k]||{}).v==='no'&&!String((a.data.it[x.k]||{}).c||'').trim());if(sinDesc.length){flash('aud','err','Describe lo que encontraste en cada "No cumple" ('+sinDesc.length+' sin comentario).');return}
+    clearTimeout(S.audT);a.data.salida=fHora(ahora());if(await audGuardar(a,{estado:'cerrada'})){flash('aud','ok','Auditoría cerrada. Ya no se puede modificar.');render()}};
+  const ra=$('#audReabrir');if(ra)ra.onclick=async()=>{if(await audGuardar(a,{estado:'borrador'}))render()};
+  const bo=$('#audBorrar');if(bo)bo.onclick=async()=>{if(bo.dataset.ok!=='1'){bo.dataset.ok='1';bo.textContent='Toca otra vez para eliminar';return}
+    const{error}=await S.sb.from('auditorias').delete().eq('id',a.id);if(error){flash('aud','err',errText(error));return}S.aud=S.aud.filter(x=>x.id!==a.id);S.audSel=null;render()};
+}
+async function pdfAuditoria(a){const k='aud';
+  try{flash(k,'ok','Preparando el PDF…');const d=a.data||{};const c=audCalc(a);const L=audItems(a);const it=d.it||{};
+  const doc=pdfNew('p');const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
+  let y=pdfHead(doc,'AUDITORÍA SITUACIONAL',`Suc. ${a.suc} · ${fLarga(D0(a.fecha))}`);
+  const sec=t=>{if(y>H-90){doc.addPage();y=60}doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...AZ);doc.text(t,36,y);y+=6};
+  const kv={theme:'plain',styles:{fontSize:9.5,cellPadding:3},columnStyles:{0:{fontStyle:'bold',textColor:GR,cellWidth:120},2:{fontStyle:'bold',textColor:GR,cellWidth:120}}};
+  const col=n=>n==='good'?[29,134,87]:n==='warn'?[168,106,16]:n==='bad'?[192,64,44]:[22,35,42];
+  sec('DATOS DE LA VISITA');AT(doc,Object.assign({},kv,{startY:y,body:[['Fecha',fLarga(D0(a.fecha)),'Sucursal',a.suc],['Auditor',nombrePerfil(a.auditor),'Puesto','Auditor Supervisor de Operaciones'],['Hora de llegada',d.llegada||'—','Hora de salida',d.salida||'—'],['Estado',a.estado==='cerrada'?'Cerrada':'En proceso','Tipo de visita','No anunciada']]}));y=lastY(doc)+18;
+  sec('RESULTADO');AT(doc,Object.assign({},kv,{startY:y,body:[['Calificación general',c.pct==null?'—':c.pct+'%','Resultado',c.nivel[0]],['Faltas críticas',String(c.crit.length),'Puntos revisados',`${c.total-c.falta} de ${c.total}`],
+    ...[['pres','Presencia'],...AUD_B.map(b=>[b.k,b.t])].reduce((acc,[bk,bt],i,arr)=>{if(i%2===0){const n=arr[i+1];const f=x=>{const p=c.por[x]||{};return p.pct==null?'—':p.pct+'%'};acc.push([bt,f(bk),n?n[1]:'',n?f(n[0]):''])}return acc},[])],
+    didParseCell:q=>{if(q.section==='body'&&q.row.index===0&&(q.column.index===1||q.column.index===3)){q.cell.styles.fontStyle='bold';q.cell.styles.textColor=col(c.nivel[1])}if(q.section==='body'&&q.row.index===1&&q.column.index===1&&c.crit.length){q.cell.styles.fontStyle='bold';q.cell.styles.textColor=[192,64,44]}}}));y=lastY(doc)+18;
+  const R={si:'Cumple',no:'No cumple',na:'N.A.'};
+  const tablaB=(bk,t)=>{const xs=L.filter(x=>x.b===bk);if(!xs.length)return;sec(t.toUpperCase()+((c.por[bk]||{}).pct!=null?` · ${c.por[bk].pct}%`:''));
+    AT(doc,{startY:y,head:[['Punto revisado','Resultado','Comentario']],body:xs.map(x=>{const v=(it[x.k]||{});return[x.l+(x.cr?' (crítico)':''),R[v.v]||'Sin revisar',(v.c||'')+((v.f||[]).length?` [${v.f.length} foto(s)]`:'')]}),
+      styles:{fontSize:8.5,cellPadding:4,textColor:[22,35,42],lineColor:[215,225,230],lineWidth:0.5},columnStyles:{0:{cellWidth:230},1:{cellWidth:70,fontStyle:'bold'}},
+      didParseCell:q=>{if(q.section==='body'&&q.column.index===1){const s=String(q.cell.raw);q.cell.styles.textColor=s==='No cumple'?[192,64,44]:s==='Cumple'?[29,134,87]:GR}}});y=lastY(doc)+16};
+  tablaB('pres','Presencia y ocupacionalidad');AUD_B.forEach(b=>tablaB(b.k,b.t));
+  sec('OBSERVACIONES GENERALES');doc.setFont('helvetica','normal');doc.setFontSize(9.5);doc.setTextColor(22,35,42);const ol=doc.splitTextToSize(d.obs||'Sin observaciones.',W-72);if(y+10+ol.length*12>H-50){doc.addPage();y=60}doc.text(ol,36,y+10);y+=10+ol.length*12+14;
+  if(y>H-110){doc.addPage();y=60}y+=44;doc.setDrawColor(...GR);doc.setLineWidth(.6);doc.line(60,y,W/2-30,y);doc.line(W/2+30,y,W-60,y);doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(22,35,42);doc.text(nombrePerfil(a.auditor),(60+W/2-30)/2,y-6,{align:'center'});
+  doc.setTextColor(...GR);doc.text('AUDITOR SUPERVISOR DE OPERACIONES',(60+W/2-30)/2,y+12,{align:'center'});doc.text('NOMBRE Y FIRMA ENCARGADA DE SUCURSAL',(W/2+30+W-60)/2,y+12,{align:'center'});
+  const fotos=[];L.forEach(x=>((it[x.k]||{}).f||[]).forEach(f=>fotos.push({f,x,v:(it[x.k]||{}).v})));const fallas=[];
+  for(const [i,o] of fotos.entries()){try{const im=await imgParaPdf(o.f,'auditorias');doc.addPage();let yy=pdfHead(doc,'EVIDENCIA FOTOGRÁFICA',`Auditoría Suc. ${a.suc} · ${fCorta(D0(a.fecha))}`);
+    doc.setFont('helvetica','bold');doc.setFontSize(9.5);doc.setTextColor(22,35,42);const cap=doc.splitTextToSize(`Foto ${i+1} de ${fotos.length} · ${o.x.l} · ${R[o.v]||''}`,W-72);doc.text(cap,36,yy+4);yy+=cap.length*12+6;
+    const mw=W-72,mh=H-yy-50;const sc=Math.min(mw/im.w,mh/im.h);doc.addImage(im.src,'JPEG',(W-im.w*sc)/2,yy,im.w*sc,im.h*sc)}catch(e){fallas.push(o.x.l)}}
+  pdfFoot(doc);await guardarArchivo(`Auditoria ${a.suc} ${a.fecha}.pdf`,doc,k);if(fallas.length)flash(k,'err','PDF listo, pero no se pudieron incluir '+fallas.length+' foto(s).');
+  }catch(e){flash(k,'err','No se pudo generar el PDF: '+e.message)}}
 /* ============ rol de trabajo ============ */
 const LUG_ABR={'Centro':'C','Cuauhtémoc':'Q','Descanso':'D','Sin turno':'–'};const LUG_CIC=['','Centro','Cuauhtémoc','Descanso','Sin turno'];
 function rolesDraft(){if(!S.draftRoles)S.draftRoles=JSON.parse(JSON.stringify(S.roles||{patron:{},meses:{}}));S.draftRoles.patron=S.draftRoles.patron||{};S.draftRoles.meses=S.draftRoles.meses||{};return S.draftRoles}
@@ -655,7 +775,7 @@ function vUsuarios(){
   const cols=cfgCols();const P=S.perfiles.slice().sort((a,b)=>Number(b.activo)-Number(a.activo)||String(a.usuario).localeCompare(b.usuario));
   const usados=new Set(S.perfiles.filter(p=>p.activo&&p.colab).map(p=>p.colab));
   const optCol=(sel)=>`<option value="">Sin colaborador</option>`+cols.map(c=>`<option value="${esc(c.id)}" ${sel===c.id?'selected':''}>${esc(c.nombre)}</option>`).join('');
-  const optRol=(sel)=>[['colab','Colaborador'],['coord','Coordinación'],['admin','Dirección']].map(([k,l])=>`<option value="${k}" ${sel===k?'selected':''}>${l}</option>`).join('');
+  const optRol=(sel)=>[['colab','Colaborador'],['coord','Coordinación'],['auditor','Auditor'],['admin','Dirección']].map(([k,l])=>`<option value="${k}" ${sel===k?'selected':''}>${l}</option>`).join('');
   const sinUsuario=cols.filter(c=>c.activo!==false&&!usados.has(c.id));
   const optSuc=sel=>[['Centro','Centro'],['Cuauhtémoc','Cuauhtémoc'],['','Las dos']].map(([k,l])=>`<option value="${k}" ${(sel||'')===k?'selected':''}>${l}</option>`).join('');
   const usuarioDe=id=>{const p=S.perfiles.find(x=>x.colab===id&&x.activo);return p?p.usuario:''};
@@ -860,6 +980,7 @@ function bindMain(){
   const pm=$('#btnPdfMes');if(pm)pm.onclick=()=>pdfMes(S.mesSel||mesOf(ahora()));
   if(S.tab==='catalogo')bindCatalogo();
   if(S.tab==='roles')bindRoles();
+  if(S.tab==='auditorias')bindAuditorias();
   if(S.tab==='usuarios')bindUsuarios();
 }
 
@@ -1263,8 +1384,8 @@ async function pdfActividad(cid,rec,a,k){k=k||'mod';
   else if(pdfs.length)flash(k,'ok',`PDF listo. ${pdfs.length===1?'El PDF adjunto no se incluye dentro; ábrelo':'Los PDF adjuntos no se incluyen dentro; ábrelos'} con "Ver".`);
   }catch(e){flash(k,'err','No se pudo generar el PDF: '+e.message)}
 }
-async function imgParaPdf(f){
-  const{data,error}=await S.sb.storage.from('evidencias').createSignedUrl(f.path,600);if(error||!data)throw new Error('sin enlace');
+async function imgParaPdf(f,bucket){
+  const{data,error}=await S.sb.storage.from(bucket||'evidencias').createSignedUrl(f.path,600);if(error||!data)throw new Error('sin enlace');
   const resp=await fetch(data.signedUrl);if(!resp.ok)throw new Error('descarga');const blob=await resp.blob();const u=URL.createObjectURL(blob);
   try{const im=await new Promise((ok,ko)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=()=>ko(new Error('formato'));i.src=u});
     const M=1400,sc=Math.min(1,M/Math.max(im.naturalWidth,im.naturalHeight));const c=document.createElement('canvas');c.width=Math.round(im.naturalWidth*sc);c.height=Math.round(im.naturalHeight*sc);
