@@ -183,6 +183,7 @@ td.dif-n{color:var(--bad);font-weight:700}td.dif-p{color:var(--warn);font-weight
 .rc{width:26px;height:26px;border-radius:6px;border:1px solid var(--line);background:var(--surface-2,#eef2f5);font-weight:700;font-size:.75rem;cursor:pointer;display:inline-block;color:var(--ink-2)}
 i.rc{width:16px;height:16px;vertical-align:middle;cursor:default}
 .rc.cen{background:#d6eff8;color:#006f93;border-color:#9fd6ea}.rc.cua{background:#fff1cc;color:#8a5a00;border-color:#ffd677}.rc.des{background:#eceeef;color:#7b7d7e}
+.chk{font-size:.82rem;display:inline-flex;gap:4px;align-items:center}
 .rc.st{background:#fff;color:#9a9c9d;border-style:dashed}
 .rc.rc-ov{outline:2px solid var(--ink,#222);outline-offset:-2px}
 .rol-pat select{min-width:92px;max-width:118px}.sel.sm{padding:4px 6px;font-size:.82rem}
@@ -405,13 +406,13 @@ const msgHtml=k=>S.msg[k]?`<div class="msg ${S.msg[k].kind}" role="status">${esc
 let rq=false;function render(){if(rq)return;rq=true;requestAnimationFrame(()=>{rq=false;try{draw()}catch(e){console.error(e)}})}
 /* ============ validación por encargada ============ */
 function miEquipoSuc(me){if(!me||me.puesto!=='enc')return[];return cfgCols().filter(c=>c.activo!==false&&c.id!==me.id&&(c.puesto==='caj'||c.puesto==='val')&&(!c.suc||c.suc===me.suc))}
-function puedeValidarA(cid,act,rec){const me=meCol();if(S.admin||(S.perfil&&S.perfil.rol==='coord'))return true;if(!me||me.id===cid||me.puesto!=='enc')return false;if(act&&act.valEnc)return act.valEnc===me.suc;const c=colById(cid);if(!c||(c.puesto!=='caj'&&c.puesto!=='val'))return false;const su=(rec&&rec.suc)||c.suc;return!su||su===me.suc}
+function puedeValidarA(cid,act,rec){const me=meCol();if(S.admin||(S.perfil&&S.perfil.rol==='coord'))return true;if(!me||me.id===cid||me.puesto!=='enc')return false;if(act&&act.valEnc)return act.valEnc===me.suc;const c=colById(cid);const deCaj=c&&(c.puesto==='caj'||c.puesto==='val'||(act&&act.cubre&&(act.puestos||[]).some(p=>p==='caj'||p==='val')));if(!deCaj)return false;const su=(rec&&rec.suc)||c.suc;return!su||su===me.suc}
 function actsValEnc(me){return me&&me.puesto==='enc'?cfgActs().filter(a=>a.activo!==false&&a.valEnc&&a.valEnc===me.suc):[]}
-const validable=(cid,act)=>{const c=colById(cid);return esFormato(act.tipo)||!!act.valCoord||!!act.valEnc||(c&&(c.puesto==='caj'||c.puesto==='val'))};
+const validable=(cid,act)=>{const c=colById(cid);return esFormato(act.tipo)||!!act.valCoord||!!act.valEnc||(!!act.cubre&&(act.puestos||[]).some(p=>p==='caj'||p==='val'))||(c&&(c.puesto==='caj'||c.puesto==='val'))};
 function porValidar(me,now){const hoy=dia0(now);const out=[];if(!me||me.puesto!=='enc')return out;const ok=(c,r)=>hecho(r)&&!S.vidx[c.id+'~'+r.key]&&new Date(r.at)>=addD(hoy,-14);
   cfgCols().filter(c=>c.id!==me.id).forEach(c=>{Object.values(S.idx[c.id]||{}).forEach(r=>{const a=actById(r.act);if(!ok(c,r))return;
     if(a&&a.valEnc){if(a.valEnc===me.suc)out.push({c,r});return}
-    if((c.puesto==='caj'||c.puesto==='val')&&puedeValidarA(c.id,a,r))out.push({c,r})})});
+    if(a&&validable(c.id,a)&&!esFormato(a.tipo)&&!a.valCoord&&puedeValidarA(c.id,a,r))out.push({c,r})})});
   return out.sort((a,b)=>String(b.r.at).localeCompare(String(a.r.at)))}
 function vSucursal(me){
   const now=ahora();const team=miEquipoSuc(me);const PV=porValidar(me,now);const mes=mesOf(now);
@@ -480,9 +481,9 @@ function vRoles(){
   const R=rolesDraft();const mes=S.rolMes||mesOf(ahora());const[y,m]=mes.split('-').map(Number);const nd=lastDay(y,m);const C=colsRol();const M=R.meses[mes]||{};
   const dl=['','L','M','M','J','V','S','D'];
   const pat=`<div class="card"><h3>Patrón semanal</h3><p class="note">Dónde trabaja normalmente cada quien por día de la semana. "Su sucursal" usa la sucursal de trabajo de su ficha. El mes se llena con este patrón y abajo ajustas los días que cambien.</p>
-   <div class="tbl"><table class="rol-pat"><thead><tr><th>Colaborador</th>${DIAS.slice(1).map(d=>`<th>${d.slice(0,3)}</th>`).join('')}<th title="Hace las tareas de encargada cuando no está la encargada">Cubre encargada</th></tr></thead><tbody>
+   <div class="tbl"><table class="rol-pat"><thead><tr><th>Colaborador</th>${DIAS.slice(1).map(d=>`<th>${d.slice(0,3)}</th>`).join('')}<th title="Hace las tareas de ese puesto cuando no hay nadie del puesto en la sucursal">Cubre a</th></tr></thead><tbody>
    ${C.map(c=>`<tr><td><b>${esc(nombreCorto(c))}</b><div class="note">${esc(PUESTOS[c.puesto]||c.puesto)}${c.suc?' · '+esc(c.suc):''}</div></td>${[1,2,3,4,5,6,7].map(w=>{const v=((R.patron[c.id]||{})[w])||'';
-     return`<td><select class="sel sm" data-pat="${esc(c.id)}" data-w="${w}" aria-label="${esc(nombreCorto(c))} ${DIAS[w]}"><option value="" ${!v?'selected':''}>${c.suc?'Su sucursal':'—'}</option>${['Centro','Cuauhtémoc','Descanso','Sin turno'].map(o=>`<option ${v===o?'selected':''}>${o}</option>`).join('')}</select></td>`}).join('')}<td style="text-align:center">${c.puesto!=='enc'?`<input type="checkbox" data-cubre="${esc(c.id)}" ${cubrePuestos(c,R).includes('enc')?'checked':''} aria-label="${esc(nombreCorto(c))} cubre como encargada">`:''}</td></tr>`).join('')}
+     return`<td><select class="sel sm" data-pat="${esc(c.id)}" data-w="${w}" aria-label="${esc(nombreCorto(c))} ${DIAS[w]}"><option value="" ${!v?'selected':''}>${c.suc?'Su sucursal':'—'}</option>${['Centro','Cuauhtémoc','Descanso','Sin turno'].map(o=>`<option ${v===o?'selected':''}>${o}</option>`).join('')}</select></td>`}).join('')}<td style="white-space:nowrap">${[['enc','Encargada'],['caj','Cajero']].filter(([k])=>k!==c.puesto).map(([k,l])=>`<label class="chk"><input type="checkbox" data-cubre="${esc(c.id)}" data-p="${k}" ${cubrePuestos(c,R).includes(k)?'checked':''}> ${l}</label>`).join('<br>')}</td></tr>`).join('')}
    </tbody></table></div></div>`;
   const cal=`<div class="card"><div class="row"><h3 style="flex:1">Rol de ${mesLabel(mes)}</h3><label class="fl" for="rolMes" style="flex-direction:row;align-items:center;gap:8px">Mes<select class="sel" id="rolMes" style="width:auto">${rolMesesOpts().map(k=>`<option value="${k}" ${k===mes?'selected':''}>${mesLabel(k)}</option>`).join('')}</select></label></div>
    <p class="note">Toca un día para cambiarlo: Centro → Cuauhtémoc → Descanso → Sin turno → como el patrón. Los días cambiados se ven con borde.</p>
@@ -492,14 +493,14 @@ function vRoles(){
    </tbody></table></div>
    <div class="legend"><span><i class="rc cen"></i>C · Centro</span><span><i class="rc cua"></i>Q · Cuauhtémoc</span><span><i class="rc des"></i>D · Descanso</span><span><i class="rc st"></i>– · Sin turno en sucursal</span></div></div>`;
   return`<div class="sec-h"><h2>Rol de trabajo</h2><span class="note">Dónde trabaja cada colaborador cada día</span></div>${msgHtml('rol')}
-  <div class="alerta" role="note"><b>Cómo funciona</b><span>En descanso o sin turno no se le asignan tareas. Las tareas de la sucursal (metas, conteos, cuadre de caja, llamadas, publicaciones, cargar tecnología y exhibir) las hace quien trabaje ese día en esa sucursal. Si no está la encargada, las hace quien tenga marcado "Cubre como encargada" (por ejemplo, Sinaí).</span></div>
+  <div class="alerta" role="note"><b>Cómo funciona</b><span>En descanso o sin turno no se le asignan tareas. Las tareas de la sucursal (metas, conteos, cuadre de caja, llamadas, publicaciones, cargar tecnología y exhibir) las hace quien trabaje ese día en esa sucursal. Si no hay nadie del puesto en la sucursal ese día, las hace quien tenga marcado "Cubre a" ese puesto (por ejemplo, Sinaí cubre encargada y César cubre cajero).</span></div>
   <div class="row"><button class="btn pri" type="button" id="rolSave">Guardar rol</button>${M&&Object.keys(M).length?`<button class="btn" type="button" id="rolClear">Quitar cambios de ${mesLabel(mes).toLowerCase()}</button>`:''}${S.rolSucio?'<span class="note">Hay cambios sin guardar.</span>':''}</div>
   ${cal}${pat}`;
 }
 function bindRoles(){
   const R=rolesDraft();const sucio=()=>{S.rolSucio=true;render()};
   const rm=$('#rolMes');if(rm)rm.onchange=()=>{S.rolMes=rm.value;render()};
-  $$('[data-cubre]').forEach(el=>el.onchange=()=>{R.cubre=R.cubre||{};const id=el.dataset.cubre;if(el.checked)R.cubre[id]=['enc'];else delete R.cubre[id];sucio()});
+  $$('[data-cubre]').forEach(el=>el.onchange=()=>{R.cubre=R.cubre||{};const id=el.dataset.cubre,pp=el.dataset.p;const L=new Set(R.cubre[id]||[]);el.checked?L.add(pp):L.delete(pp);if(L.size)R.cubre[id]=[...L];else delete R.cubre[id];sucio()});
   $$('[data-pat]').forEach(el=>el.onchange=()=>{const id=el.dataset.pat,w=el.dataset.w;R.patron[id]=R.patron[id]||{};if(el.value)R.patron[id][w]=el.value;else delete R.patron[id][w];sucio()});
   $$('[data-rc]').forEach(el=>el.onclick=()=>{const id=el.dataset.rc,ky=el.dataset.d,mes=ky.slice(0,7);R.meses[mes]=R.meses[mes]||{};const M=R.meses[mes];M[id]=M[id]||{};
     const cur=M[id][ky]||'';const nx=LUG_CIC[(LUG_CIC.indexOf(cur)+1)%LUG_CIC.length];if(nx)M[id][ky]=nx;else delete M[id][ky];if(!Object.keys(M[id]).length)delete M[id];sucio()});
