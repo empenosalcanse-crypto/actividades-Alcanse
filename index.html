@@ -178,6 +178,13 @@ td.dif-n{color:var(--bad);font-weight:700}td.dif-p{color:var(--warn);font-weight
 .adj-i{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
 .cj-det{border:1px solid var(--line);border-radius:10px;padding:8px 12px;background:var(--surface)}
 .cj-det summary{cursor:pointer;font-weight:600;color:var(--azul)}
+.rol-cal{border-collapse:collapse;font-size:.8rem}.rol-cal th{font-weight:600;color:var(--ink-2);padding:4px 2px;text-align:center;min-width:26px}.rol-cal th:first-child,.rol-cal td:first-child{text-align:left;padding-right:10px;white-space:nowrap;position:sticky;left:0;background:var(--surface,#fff)}
+.rol-cal th.fin{color:var(--azul)}.rol-cal td{padding:2px;text-align:center}
+.rc{width:26px;height:26px;border-radius:6px;border:1px solid var(--line);background:var(--surface-2,#eef2f5);font-weight:700;font-size:.75rem;cursor:pointer;display:inline-block;color:var(--ink-2)}
+i.rc{width:16px;height:16px;vertical-align:middle;cursor:default}
+.rc.cen{background:#d6eff8;color:#006f93;border-color:#9fd6ea}.rc.cua{background:#fff1cc;color:#8a5a00;border-color:#ffd677}.rc.des{background:#eceeef;color:#7b7d7e}
+.rc.ov{outline:2px solid var(--ink,#222);outline-offset:-2px}
+.rol-pat select{min-width:104px}.sel.sm{padding:4px 6px;font-size:.82rem}
 .adj-prev{flex:1 0 100%;display:block;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden;text-align:center;min-height:60px}
 .adj-prev img{display:block;width:100%;max-height:420px;object-fit:contain;background:#f4f6f8}
 .adj-t{font-size:.72rem;font-weight:700;background:var(--azul);color:#fff;border-radius:5px;padding:2px 6px}
@@ -280,15 +287,23 @@ function periodos(act,a,b){
   }
   return out;
 }
+function lugarDe(col,d,R){if(!col)return'';R=R||S.roles||{};const k=iso(d);const m=((R.meses||{})[k.slice(0,7)]||{})[col.id];if(m&&m[k])return m[k];
+  const pt=(R.patron||{})[col.id];const w=dow(d);if(pt&&pt[w])return pt[w];if((col.descanso||[]).map(Number).includes(w))return'Descanso';return col.suc||''}
+function responsable(act,lug,d){const dd=iso(d);const C=cfgCols().filter(c=>c.activo!==false&&(act.puestos||[]).includes(c.puesto)&&!(c.desde&&c.desde>dd)&&lugarDe(c,d)===lug);
+  if(!C.length)return null;const t=C.find(c=>c.suc===lug);return(t||C[0]).id}
 function instancias(col,a,b){
-  const res=[];const desde=col.desde?D0(col.desde):null;const desc=(col.descanso||[]).map(Number);
+  const res=[];const desde=col.desde?D0(col.desde):null;
   for(const act of actsDe(col)){
+    const diaFijo=act.frec==='diario'||act.frec==='dias'||act.frec==='semanal';
     for(const p of periodos(act,a,b)){
       if(desde&&p.lim<desde)continue;
-      if(esDiaria(act)&&desc.includes(dow(p.ini)))continue;
+      let lug=col.suc||'';
+      if(diaFijo&&!act.porSuc){const dd=dia0(p.lim);lug=lugarDe(col,dd);
+        if(lug==='Descanso'){if(act.frec==='semanal'&&!act.cubre)lug=col.suc||'';else continue}
+        if(act.cubre&&lug&&responsable(act,lug,dd)!==col.id)continue}
       const sucs=act.porSuc?SUCS:[null];
       for(const s of sucs){const key=act.id+'__'+p.per+(s?'__'+SUCC[s]:'');
-        res.push({key,act,per:p.per,suc:s||col.suc||'',porSuc:!!s,ini:p.ini,lim:p.lim,mes:mesOf(p.lim),col:col.id})}
+        res.push({key,act,per:p.per,suc:s||lug||'',porSuc:!!s,ini:p.ini,lim:p.lim,mes:mesOf(p.lim),col:col.id})}
     }
   }
   res.sort((x,y)=>x.lim-y.lim||String(x.act.nombre).localeCompare(y.act.nombre));
@@ -358,7 +373,7 @@ async function cargarTodo(silencioso){
       todas('validaciones','colab,key,mes,data,user_id',c)]);
     if(pf.error)throw pf.error;if(cf.error)throw cf.error;
     S.perfiles=pf.data||[];S.perfil=S.perfiles.find(p=>p.user_id===S.uid)||null;S.admin=!!(S.perfil&&S.perfil.rol==='admin');
-    const o={};(cf.data||[]).forEach(r=>{o[r.id]=r.data});S.equipo=o.equipo||null;S.catalogo=o.catalogo||null;
+    const o={};(cf.data||[]).forEach(r=>{o[r.id]=r.data});S.equipo=o.equipo||null;S.catalogo=o.catalogo||null;S.roles=o.roles||{patron:{},meses:{}};
     S.rows=rg;S.vrows=vl;S.cutoff=c;S.cfgLoaded=true;
     S.sync=['ok','Datos al día · '+fHora(ahora())];
   }catch(e){S.sync=['off','No se pudieron cargar los datos. Revisa tu conexión; se reintenta cada minuto.']}
@@ -382,12 +397,14 @@ const msgHtml=k=>S.msg[k]?`<div class="msg ${S.msg[k].kind}" role="status">${esc
 let rq=false;function render(){if(rq)return;rq=true;requestAnimationFrame(()=>{rq=false;try{draw()}catch(e){console.error(e)}})}
 /* ============ validación por encargada ============ */
 function miEquipoSuc(me){if(!me||me.puesto!=='enc')return[];return cfgCols().filter(c=>c.activo!==false&&c.id!==me.id&&(c.puesto==='caj'||c.puesto==='val')&&(!c.suc||c.suc===me.suc))}
-function puedeValidarA(cid,act){const me=meCol();if(S.admin||(S.perfil&&S.perfil.rol==='coord'))return true;if(!me||me.id===cid||me.puesto!=='enc')return false;if(act&&act.valEnc)return act.valEnc===me.suc;return miEquipoSuc(me).some(c=>c.id===cid)}
+function puedeValidarA(cid,act,rec){const me=meCol();if(S.admin||(S.perfil&&S.perfil.rol==='coord'))return true;if(!me||me.id===cid||me.puesto!=='enc')return false;if(act&&act.valEnc)return act.valEnc===me.suc;const c=colById(cid);if(!c||(c.puesto!=='caj'&&c.puesto!=='val'))return false;const su=(rec&&rec.suc)||c.suc;return!su||su===me.suc}
 function actsValEnc(me){return me&&me.puesto==='enc'?cfgActs().filter(a=>a.activo!==false&&a.valEnc&&a.valEnc===me.suc):[]}
 const validable=(cid,act)=>{const c=colById(cid);return esFormato(act.tipo)||!!act.valCoord||!!act.valEnc||(c&&(c.puesto==='caj'||c.puesto==='val'))};
-function porValidar(me,now){const hoy=dia0(now);const out=[];const ve=new Set(actsValEnc(me).map(a=>a.id));const ok=(c,r)=>hecho(r)&&!S.vidx[c.id+'~'+r.key]&&new Date(r.at)>=addD(hoy,-14);
-  miEquipoSuc(me).forEach(c=>{Object.values(S.idx[c.id]||{}).forEach(r=>{const a=actById(r.act);if(a&&a.valEnc&&a.valEnc!==me.suc)return;if(ok(c,r))out.push({c,r})})});
-  if(ve.size)cfgCols().filter(c=>c.id!==me.id&&!miEquipoSuc(me).some(x=>x.id===c.id)).forEach(c=>{Object.values(S.idx[c.id]||{}).forEach(r=>{if(ve.has(r.act)&&ok(c,r))out.push({c,r})})});return out.sort((a,b)=>String(b.r.at).localeCompare(String(a.r.at)))}
+function porValidar(me,now){const hoy=dia0(now);const out=[];if(!me||me.puesto!=='enc')return out;const ok=(c,r)=>hecho(r)&&!S.vidx[c.id+'~'+r.key]&&new Date(r.at)>=addD(hoy,-14);
+  cfgCols().filter(c=>c.id!==me.id).forEach(c=>{Object.values(S.idx[c.id]||{}).forEach(r=>{const a=actById(r.act);if(!ok(c,r))return;
+    if(a&&a.valEnc){if(a.valEnc===me.suc)out.push({c,r});return}
+    if((c.puesto==='caj'||c.puesto==='val')&&puedeValidarA(c.id,a,r))out.push({c,r})})});
+  return out.sort((a,b)=>String(b.r.at).localeCompare(String(a.r.at)))}
 function vSucursal(me){
   const now=ahora();const team=miEquipoSuc(me);const PV=porValidar(me,now);const mes=mesOf(now);
   const filas=team.map(c=>{const W=ventana(c,now);const st=statsMes(c,mes,now);return`<tr class="clk" data-ver="${esc(c.id)}" tabindex="0"><td><b>${esc(c.nombre)}</b><div class="note">${esc(PUESTOS[c.puesto]||c.puesto)}</div></td><td class="n">${W.todoHoy.length?`${W.hechasHoy} / ${W.todoHoy.length}`:'—'}</td><td class="n">${W.venc.length?`<span class="pill vencida">${W.venc.length}</span>`:'<span class="pill ok">0</span>'}</td><td class="n">${PV.filter(x=>x.c.id===c.id).length}</td><td class="n">${p0(st.pct)}</td></tr>`}).join('');
@@ -407,6 +424,7 @@ function tabsDisponibles(){
   if(mgr||(me&&me.puesto==='enc'))t.push(['conteos','Conteos']);
   if(me||mgr)t.push(['ranking','Ranking']);
   if(me)t.push(['historial','Mi historial']);
+  if(mgr)t.push(['roles','Rol de trabajo']);
   if(S.admin)t.push(['catalogo','Funciones y equipo']);
   if(S.admin)t.push(['usuarios','Usuarios']);
   return t;
@@ -438,11 +456,49 @@ function draw(){
   else if(S.tab==='conteos')V=vConteos();
   else if(S.tab==='historial')V=vHistorial(me);
   else if(S.tab==='catalogo')V=vCatalogo();
+  else if(S.tab==='roles')V=vRoles();
   else if(S.tab==='usuarios')V=vUsuarios();
   else if(S.tab==='ranking')V=vRanking();
   else if(S.tab==='sucursal')V=S.ver&&miEquipoSuc(me).some(c=>c.id===S.ver)?vPersona(colById(S.ver)):vSucursal(me);
   M.innerHTML=msgHtml('main')+V;
   bindMain();bindCuenta();drawModal();
+}
+/* ============ rol de trabajo ============ */
+const LUG_ABR={'Centro':'C','Cuauhtémoc':'Q','Descanso':'D'};const LUG_CIC=['','Centro','Cuauhtémoc','Descanso'];
+function rolesDraft(){if(!S.draftRoles)S.draftRoles=JSON.parse(JSON.stringify(S.roles||{patron:{},meses:{}}));S.draftRoles.patron=S.draftRoles.patron||{};S.draftRoles.meses=S.draftRoles.meses||{};return S.draftRoles}
+function rolMesesOpts(){const cur=mesOf(ahora());return[prevMes(cur),cur,nextMes(cur),nextMes(nextMes(cur))]}
+function colsRol(){return cfgCols().filter(c=>c.activo!==false)}
+function vRoles(){
+  const R=rolesDraft();const mes=S.rolMes||mesOf(ahora());const[y,m]=mes.split('-').map(Number);const nd=lastDay(y,m);const C=colsRol();const M=R.meses[mes]||{};
+  const dl=['','L','M','M','J','V','S','D'];
+  const pat=`<div class="card"><h3>Patrón semanal</h3><p class="note">Dónde trabaja normalmente cada quien por día de la semana. "Su sucursal" usa la sucursal de trabajo de su ficha. El mes se llena con este patrón y abajo ajustas los días que cambien.</p>
+   <div class="tbl"><table class="rol-pat"><thead><tr><th>Colaborador</th>${DIAS.slice(1).map(d=>`<th>${d.slice(0,3)}</th>`).join('')}</tr></thead><tbody>
+   ${C.map(c=>`<tr><td><b>${esc(nombreCorto(c))}</b><div class="note">${esc(PUESTOS[c.puesto]||c.puesto)}${c.suc?' · '+esc(c.suc):''}</div></td>${[1,2,3,4,5,6,7].map(w=>{const v=((R.patron[c.id]||{})[w])||'';
+     return`<td><select class="sel sm" data-pat="${esc(c.id)}" data-w="${w}" aria-label="${esc(nombreCorto(c))} ${DIAS[w]}"><option value="" ${!v?'selected':''}>${c.suc?'Su sucursal':'—'}</option>${['Centro','Cuauhtémoc','Descanso'].map(o=>`<option ${v===o?'selected':''}>${o}</option>`).join('')}</select></td>`}).join('')}</tr>`).join('')}
+   </tbody></table></div></div>`;
+  const cal=`<div class="card"><div class="row"><h3 style="flex:1">Rol de ${mesLabel(mes)}</h3><label class="fl" for="rolMes" style="flex-direction:row;align-items:center;gap:8px">Mes<select class="sel" id="rolMes" style="width:auto">${rolMesesOpts().map(k=>`<option value="${k}" ${k===mes?'selected':''}>${mesLabel(k)}</option>`).join('')}</select></label></div>
+   <p class="note">Toca un día para cambiarlo: Centro → Cuauhtémoc → Descanso → como el patrón. Los días cambiados se ven con borde.</p>
+   <div style="overflow-x:auto"><table class="rol-cal"><thead><tr><th>Colaborador</th>${Array.from({length:nd},(_,k)=>{const d=new Date(y,m-1,k+1);const w=dow(d);return`<th class="${w>=6?'fin':''}">${dl[w]}<br>${k+1}</th>`}).join('')}</tr></thead><tbody>
+   ${C.map(c=>`<tr><td><b>${esc(nombreCorto(c))}</b></td>${Array.from({length:nd},(_,k)=>{const d=new Date(y,m-1,k+1);const ky=iso(d);const ov=(M[c.id]||{})[ky];const v=lugarDe(c,d,R);const ab=LUG_ABR[v]||'·';
+     return`<td><button type="button" class="rc ${v==='Descanso'?'des':v==='Centro'?'cen':v==='Cuauhtémoc'?'cua':''} ${ov?'ov':''}" data-rc="${esc(c.id)}" data-d="${ky}" title="${esc(nombreCorto(c))} ${k+1}: ${esc(v||'Sin sucursal')}${ov?' (cambio)':''}">${ab}</button></td>`}).join('')}</tr>`).join('')}
+   </tbody></table></div>
+   <div class="legend"><span><i class="rc cen"></i>C · Centro</span><span><i class="rc cua"></i>Q · Cuauhtémoc</span><span><i class="rc des"></i>D · Descanso</span></div></div>`;
+  return`<div class="sec-h"><h2>Rol de trabajo</h2><span class="note">Dónde trabaja cada colaborador cada día</span></div>${msgHtml('rol')}
+  <div class="alerta" role="note"><b>Cómo funciona</b><span>En su día de descanso no se le asignan tareas. Las tareas de la sucursal (metas, conteos, cuadre de caja, llamadas, publicaciones, cargar tecnología y exhibir) las hace quien trabaje ese día en esa sucursal, y las valida la encargada de esa sucursal.</span></div>
+  <div class="row"><button class="btn pri" type="button" id="rolSave">Guardar rol</button>${M&&Object.keys(M).length?`<button class="btn" type="button" id="rolClear">Quitar cambios de ${mesLabel(mes).toLowerCase()}</button>`:''}${S.rolSucio?'<span class="note">Hay cambios sin guardar.</span>':''}</div>
+  ${cal}${pat}`;
+}
+function bindRoles(){
+  const R=rolesDraft();const sucio=()=>{S.rolSucio=true;render()};
+  const rm=$('#rolMes');if(rm)rm.onchange=()=>{S.rolMes=rm.value;render()};
+  $$('[data-pat]').forEach(el=>el.onchange=()=>{const id=el.dataset.pat,w=el.dataset.w;R.patron[id]=R.patron[id]||{};if(el.value)R.patron[id][w]=el.value;else delete R.patron[id][w];sucio()});
+  $$('[data-rc]').forEach(el=>el.onclick=()=>{const id=el.dataset.rc,ky=el.dataset.d,mes=ky.slice(0,7);R.meses[mes]=R.meses[mes]||{};const M=R.meses[mes];M[id]=M[id]||{};
+    const cur=M[id][ky]||'';const nx=LUG_CIC[(LUG_CIC.indexOf(cur)+1)%LUG_CIC.length];if(nx)M[id][ky]=nx;else delete M[id][ky];if(!Object.keys(M[id]).length)delete M[id];sucio()});
+  const cl=$('#rolClear');if(cl)cl.onclick=()=>{const mes=S.rolMes||mesOf(ahora());delete R.meses[mes];sucio()};
+  const sv=$('#rolSave');if(sv)sv.onclick=async()=>{sv.disabled=true;sv.textContent='Guardando…';
+    const{error}=await S.sb.from('config').upsert({id:'roles',data:R,actualizado:ahora().toISOString()});
+    if(error){sv.disabled=false;sv.textContent='Guardar rol';flash('rol','err',errText(error));return}
+    S.roles=JSON.parse(JSON.stringify(R));S.rolSucio=false;flash('rol','ok','Rol guardado. Las tareas ya se asignan con este rol.')};
 }
 /* ============ entrar y contraseña ============ */
 function vLogin(){
@@ -793,6 +849,7 @@ function bindMain(){
   const fs=$('#fSuc');if(fs)fs.onchange=()=>{S.fSuc=fs.value;render()};
   const pm=$('#btnPdfMes');if(pm)pm.onclick=()=>pdfMes(S.mesSel||mesOf(ahora()));
   if(S.tab==='catalogo')bindCatalogo();
+  if(S.tab==='roles')bindRoles();
   if(S.tab==='usuarios')bindUsuarios();
 }
 
@@ -831,7 +888,7 @@ function drawModal(){
   else if(!rec&&!ro)body+=`<p>Al guardar confirmas que realizaste esta actividad${inst.porSuc?' para Suc. '+esc(inst.suc):''}.</p>`;
   if(a.adjunto)body+=adjHtml(md,rec,ro);
   body+=`<label class="fl" for="mNota">Comentario${a.tipo==='check'?' (opcional)':''}<textarea class="in" id="mNota" ${dis} placeholder="${ro?'':'Algo que Dirección o la coordinación deba saber'}">${esc(md.nota!=null?md.nota:(rec?rec.nota||'':''))}</textarea></label>`;
-  const puedeVal=hecho(rec)&&!val&&!propio&&((esFormato(a.tipo)||a.valCoord)?esMgr():(validable(cid,a)&&puedeValidarA(cid,a)));
+  const puedeVal=hecho(rec)&&!val&&!propio&&((esFormato(a.tipo)||a.valCoord)?esMgr():(validable(cid,a)&&puedeValidarA(cid,a,rec)));
   const vInfo=val?`<div class="alerta ok"><b>Validado</b><span>${esc(val.nombre||'')} · ${fCorta(new Date(val.at))} ${fHora(new Date(val.at))}${val.nota?' · '+esc(val.nota):''}</span></div>`:'';
   const col=colById(cid);
   el.innerHTML=`<div class="ov" id="ov"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="mT">
