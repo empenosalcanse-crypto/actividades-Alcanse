@@ -188,6 +188,10 @@ i.rc{width:16px;height:16px;vertical-align:middle;cursor:default}
 .rc.st{background:#fff;color:#9a9c9d;border-style:dashed}
 .rc.rc-ov{outline:2px solid var(--ink,#222);outline-offset:-2px}
 .rol-pat select{min-width:92px;max-width:118px}.sel.sm{padding:4px 6px;font-size:.82rem}
+.card.aud-bad{border-color:#e8b4aa;background:#fffaf8}
+.in:disabled,.sel:disabled{background:#f4f6f8;color:var(--ink,#16232a);cursor:default}
+.acc-mis{border-color:#ffd677;background:#fffbf0}.acc-it{display:flex;gap:12px;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding:10px 0;flex-wrap:wrap}.acc-it>div:first-child{flex:1 1 260px}.acc-r{flex:1 1 100%}
+.acc-f{padding-top:10px}
 .aud-it{border-top:1px solid var(--line);padding:10px 0;display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center}
 .aud-it.no{background:#fdf1ee;margin:0 -12px;padding:10px 12px}
 .aud-l{font-weight:600;font-size:.92rem}.aud-x{grid-column:1/-1;display:flex;gap:8px}.aud-x .in{flex:1}
@@ -395,6 +399,7 @@ async function cargarTodo(silencioso){
     S.perfiles=pf.data||[];S.perfil=S.perfiles.find(p=>p.user_id===S.uid)||null;S.admin=!!(S.perfil&&S.perfil.rol==='admin');
     const o={};(cf.data||[]).forEach(r=>{o[r.id]=r.data});S.equipo=o.equipo||null;S.catalogo=o.catalogo||null;S.roles=o.roles||{patron:{},meses:{}};
     S.rows=rg;S.vrows=vl;S.cutoff=c;S.cfgLoaded=true;
+    {const ac=await S.sb.from('acciones').select('*').order('limite');if(!ac.error)S.acc=ac.data||[]}
     if(verAud()){const au=await S.sb.from('auditorias').select('*').order('fecha',{ascending:false}).order('creado',{ascending:false}).limit(300);if(!au.error)S.aud=au.data||[]}
     S.sync=['ok','Datos al día · '+fHora(ahora())];
   }catch(e){S.sync=['off','No se pudieron cargar los datos. Revisa tu conexión; se reintenta cada minuto.']}
@@ -465,7 +470,7 @@ function draw(){
   const me=meCol();const mgr=esMgr();
   const T=tabsDisponibles();const h=(location.hash||'').slice(1);
   if(T.find(x=>x[0]===h))S.tab=h;if(!S.tab||!T.find(x=>x[0]===S.tab))S.tab=T.length?T[0][0]:null;
-  let nV=0,nPV=0;if(me){nV=ventana(me,now).venc.length;nPV=porValidar(me,now).length}
+  let nV=0,nPV=0;if(me){nV=ventana(me,now).venc.length+(S.acc||[]).filter(x=>x.colab===me.id&&x.estado==='pendiente').length;nPV=porValidar(me,now).length}
   document.title=(nV?`(${nV}) `:'')+'Actividades Alcanse';
   $('#who').innerHTML=(me?`<b>${esc(me.nombre)}</b><span>${esc(PUESTOS[me.puesto]||me.puesto)}${me.suc?' · Suc. '+esc(me.suc):''}</span>`:`<b>${esc(S.perfil.nombre||S.perfil.usuario)}</b><span>${S.admin?'Dirección':esAuditor()?'Auditor Supervisor de Operaciones':'Usuario'}</span>`)+cuenta;
   $('#tabs').innerHTML=T.map(([k,l])=>`<a href="#${k}" ${S.tab===k?'aria-current="page"':''}>${l}${k==='mis'&&nV?` <span class="badge" aria-label="${nV} vencidas">${nV}</span>`:''}${k==='sucursal'&&nPV?` <span class="badge" aria-label="${nPV} por validar">${nPV}</span>`:''}</a>`).join('');
@@ -485,7 +490,7 @@ function draw(){
   else if(S.tab==='ranking')V=vRanking();
   else if(S.tab==='sucursal')V=S.ver&&miEquipoSuc(me).some(c=>c.id===S.ver)?vPersona(colById(S.ver)):vSucursal(me);
   M.innerHTML=msgHtml('main')+V;
-  bindMain();bindCuenta();drawModal();
+  bindMain();bindAcc();bindCuenta();drawModal();
 }
 /* ============ auditorías (solo Dirección y auditor) ============ */
 const AUD_B=[
@@ -510,26 +515,28 @@ function vAuditorias(){
   const sel=S.audSel&&(S.aud||[]).find(x=>x.id===S.audSel);if(sel)return vAudEditor(sel);
   const L=S.aud||[];
   return`<div class="sec-h"><h2>Auditorías</h2><span class="note">Visitas no anunciadas · solo las ven Dirección y el auditor</span></div>${msgHtml('aud')}
-  <div class="card"><h3>Nueva auditoría situacional</h3><p class="note">Se registra la hora de llegada al iniciar. La lista de personal se arma con el rol de trabajo del día.</p>
-   <div class="row"><label class="fl" for="audSuc" style="flex:0 1 240px">Sucursal<select class="sel" id="audSuc">${SUCS.map(s=>`<option>${s}</option>`).join('')}</select></label><button class="btn pri" type="button" id="audNueva" style="align-self:flex-end">Iniciar auditoría</button></div></div>
-  ${L.length?`<div class="tbl"><table><thead><tr><th>Fecha</th><th>Sucursal</th><th>Auditor</th><th>Llegada</th><th class="n">Calificación</th><th>Resultado</th><th>Estado</th><th></th></tr></thead><tbody>
-   ${L.map(a=>{const c=audCalc(a);const d=a.data||{};return`<tr class="clk" data-aud="${a.id}" tabindex="0"><td>${fCorta(D0(a.fecha))}</td><td>${esc(a.suc)}</td><td>${esc(nombrePerfil(a.auditor))}</td><td>${esc(d.llegada||'')}</td><td class="n"><b>${c.pct==null?'—':c.pct+'%'}</b></td><td><span class="pill ${c.nivel[1]==='good'?'ok':c.nivel[1]==='warn'?'hoy':c.nivel[1]==='bad'?'vencida':''}">${c.nivel[0]}</span>${c.crit.length?` <span class="note">${c.crit.length} crítico${c.crit.length>1?'s':''}</span>`:''}</td><td>${a.estado==='cerrada'?'<span class="pill ok">Cerrada</span>':'<span class="pill hoy">En proceso</span>'}</td><td><button class="btn sm" type="button" data-audpdf="${a.id}">PDF</button></td></tr>`}).join('')}
-  </tbody></table></div>`:'<div class="card"><p class="note">Aún no hay auditorías registradas.</p></div>'}`;
+  <div class="card"><h3>Nueva auditoría</h3><p class="note">Se registra la hora de llegada al iniciar. En la auditoría situacional, la lista de personal se arma con el rol de trabajo del día.</p>
+   <div class="row"><label class="fl" for="audTipo" style="flex:1 1 260px">Aplicativo<select class="sel" id="audTipo">${AUD_TIPOS.map(([k,l],i)=>`<option value="${k}">${i+1}. ${l}</option>`).join('')}</select></label><label class="fl" for="audSuc" style="flex:0 1 240px">Sucursal<select class="sel" id="audSuc">${SUCS.map(s=>`<option>${s}</option>`).join('')}</select></label><button class="btn pri" type="button" id="audNueva" style="align-self:flex-end">Iniciar auditoría</button></div></div>
+  ${L.length?`<div class="tbl"><table><thead><tr><th>Fecha</th><th>Aplicativo</th><th>Sucursal</th><th>Auditor</th><th>Llegada</th><th>Resultado</th><th>Estado</th><th></th></tr></thead><tbody>
+   ${L.map(a=>{const d=a.data||{};const rs=audResumen(a);const c=tipoAud(a)==='situacional'?audCalc(a):{crit:[]};return`<tr class="clk" data-aud="${a.id}" tabindex="0"><td>${fCorta(D0(a.fecha))}</td><td>${esc(nomTipo(tipoAud(a)))}</td><td>${esc(a.suc)}</td><td>${esc(nombrePerfil(a.auditor))}</td><td>${esc(d.llegada||'')}</td><td><span class="pill ${rs[1]==='good'?'ok':rs[1]==='warn'?'hoy':rs[1]==='bad'?'vencida':''}">${esc(rs[0])}</span>${c.crit.length?` <span class="note">${c.crit.length} crítico${c.crit.length>1?'s':''}</span>`:''}</td><td>${a.estado==='cerrada'?'<span class="pill ok">Cerrada</span>':'<span class="pill hoy">En proceso</span>'}</td><td><button class="btn sm" type="button" data-audpdf="${a.id}">PDF</button></td></tr>`}).join('')}
+  </tbody></table></div>`:'<div class="card"><p class="note">Aún no hay auditorías registradas.</p></div>'}
+  <div class="card"><h3>Acciones correctivas</h3>${(()=>{const A=(S.acc||[]).slice().sort((x,y)=>({hecha:0,pendiente:1,verificada:2}[x.estado]-{hecha:0,pendiente:1,verificada:2}[y.estado])||x.limite.localeCompare(y.limite));const ab=A.filter(x=>x.estado!=='verificada');return accTabla(ab,true)+(A.length>ab.length?`<p class="note">${A.length-ab.length} acción(es) ya verificadas; se ven dentro de cada auditoría.</p>`:'')})()}</div>`;
 }
 function audBtn(k,v,cur,ro){const lab={si:'Cumple',no:'No cumple',na:'N.A.'}[v];return`<button type="button" class="seg-b ${cur===v?'on '+v:''}" data-av="${esc(k)}" data-v="${v}" ${ro?'disabled':''} aria-pressed="${cur===v}">${lab}</button>`}
 function audItemHtml(a,x,ro){const it=((a.data||{}).it||{})[x.k]||{};const fotos=it.f||[];
   return`<div class="aud-it ${it.v==='no'?'no':''}"><div class="aud-l">${esc(x.l)}${x.cr?' <span class="pill vencida">Crítico</span>':''}</div>
    <div class="seg">${audBtn(x.k,'si',it.v,ro)}${audBtn(x.k,'no',it.v,ro)}${audBtn(x.k,'na',it.v,ro)}</div>
    <div class="aud-x"><input class="in" data-ac="${esc(x.k)}" placeholder="${it.v==='no'?'Describe lo que encontraste':'Comentario (opcional)'}" value="${esc(it.c||'')}" ${ro?'disabled':''}>
-   ${ro?'':`<button type="button" class="btn sm" data-af="${esc(x.k)}">📷 Foto</button>`}</div>
+   ${ro?'':`<button type="button" class="btn sm" data-af="${esc(x.k)}">📷 Foto</button>`}${it.v==='no'&&(S.admin||esAuditor())?`<button type="button" class="btn sm" data-accpre="${esc(x.l+(it.c?': '+it.c:''))}">+ Acción</button>`:''}</div>
    ${fotos.length?`<div class="aud-fs">${fotos.map((f,i)=>`<a href="#" data-aimg="${esc(f.path)}" target="_blank" rel="noopener"><img alt="Foto ${i+1} de ${esc(x.l)}" data-aimgsrc="${esc(f.path)}"></a>`).join('')}</div>`:''}</div>`}
-function vAudEditor(a){const d=a.data||{};const c=audCalc(a);const ro=a.estado==='cerrada'||!(S.admin||a.auditor===S.uid);const L=audItems(a);
+function vAudEditor(a){const d=a.data||{};const c=audCalc(a);const ro=a.estado==='cerrada'||!(S.admin||a.auditor===S.uid);const L=audItems(a);const tA=tipoAud(a);const rs=audResumen(a);
   const bloque=(k,t)=>{const xs=L.filter(x=>x.b===k);const p=c.por[k]||{};return`<div class="card"><div class="row"><h3 style="flex:1">${esc(t)}</h3><span class="pill ${p.pct==null?'':p.pct>=90?'ok':p.pct>=80?'hoy':'vencida'}">${p.pct==null?'Sin calificar':p.pct+'%'}</span></div>${xs.length?xs.map(x=>audItemHtml(a,x,ro)).join(''):'<p class="note">No hay personal en el rol de trabajo para esta sucursal ese día.</p>'}</div>`};
   return`<div class="row"><button class="btn" type="button" id="audVolver">← Auditorías</button><span class="note" id="audEstado">${S.audGuardando?'Guardando…':'Cambios guardados'}</span></div>
-  <div class="sec-h"><h2>Auditoría situacional · Suc. ${esc(a.suc)}</h2><span class="note">${fLarga(D0(a.fecha))} · llegada ${esc(d.llegada||'')}${d.salida?' · salida '+esc(d.salida):''} · ${esc(nombrePerfil(a.auditor))}</span></div>${msgHtml('aud')}
-  <div class="card aud-res"><div class="kpis"><div class="kpi"><span>Calificación general</span><b class="${c.nivel[1]}">${c.pct==null?'—':c.pct+'%'}</b></div><div class="kpi"><span>Resultado</span><b class="${c.nivel[1]}">${c.nivel[0]}</b></div><div class="kpi"><span>Faltas críticas</span><b class="${c.crit.length?'bad':'good'}">${c.crit.length}</b></div><div class="kpi"><span>Puntos sin revisar</span><b>${c.falta} de ${c.total}</b></div></div>
+  <div class="sec-h"><h2>${esc(nomTipo(tA))} · Suc. ${esc(a.suc)}</h2><span class="note">${fLarga(D0(a.fecha))} · llegada ${esc(d.llegada||'')}${d.salida?' · salida '+esc(d.salida):''} · ${esc(nombrePerfil(a.auditor))}</span></div>${msgHtml('aud')}
+  ${tA==='situacional'?`  <div class="card aud-res"><div class="kpis"><div class="kpi"><span>Calificación general</span><b class="${c.nivel[1]}">${c.pct==null?'—':c.pct+'%'}</b></div><div class="kpi"><span>Resultado</span><b class="${c.nivel[1]}">${c.nivel[0]}</b></div><div class="kpi"><span>Faltas críticas</span><b class="${c.crit.length?'bad':'good'}">${c.crit.length}</b></div><div class="kpi"><span>Puntos sin revisar</span><b>${c.falta} de ${c.total}</b></div></div>
    ${c.crit.length?`<p class="note"><b>Críticos:</b> ${c.crit.map(esc).join(' · ')}</p>`:''}</div>
-  ${bloque('pres','Presencia y ocupacionalidad')}${AUD_B.map(b=>bloque(b.k,b.t)).join('')}
+  ${bloque('pres','Presencia y ocupacionalidad')}${AUD_B.map(b=>bloque(b.k,b.t)).join('')}`:`<div class="card aud-res"><div class="kpis"><div class="kpi"><span>Resultado</span><b class="${rs[1]}">${esc(rs[0])}</b></div></div></div>${vAudFormato(a,ro)}`}
+  ${vAccAud(a)}
   <div class="card"><label class="fl" for="audObs">Observaciones generales<textarea class="in" id="audObs" rows="3" ${ro?'disabled':''} placeholder="Resumen de la visita, acuerdos con la encargada, etc.">${esc(d.obs||'')}</textarea></label></div>
   <div class="row">${a.estado!=='cerrada'&&!ro?`<button class="btn pri" type="button" id="audCerrar">Cerrar auditoría</button>`:''}${a.estado==='cerrada'&&S.admin?`<button class="btn" type="button" id="audReabrir">Reabrir (Dirección)</button>`:''}<button class="btn" type="button" data-audpdf="${a.id}">Descargar PDF</button>${S.admin||(!ro&&a.estado!=='cerrada')?`<button class="btn danger" type="button" id="audBorrar">Eliminar</button>`:''}</div>
   <input id="audFoto" class="vh" type="file" accept="image/*" capture="environment">`;
@@ -544,7 +551,7 @@ function bindAuditorias(){
   $$('[data-audpdf]').forEach(b=>b.onclick=e=>{e.stopPropagation();const a=(S.aud||[]).find(x=>x.id===b.dataset.audpdf);if(a)pdfAuditoria(a)});
   $$('[data-aud]').forEach(r=>{const go=()=>{S.audSel=r.dataset.aud;render();window.scrollTo(0,0)};r.onclick=go;r.onkeydown=e=>{if(e.key==='Enter')go()}});
   const nv=$('#audNueva');if(nv)nv.onclick=async()=>{nv.disabled=true;const now=ahora();const suc=$('#audSuc').value;
-    const row={suc,fecha:iso(now),auditor:S.uid,estado:'borrador',data:{llegada:fHora(now),it:{},obs:''}};row.data.pres=audPres(row);
+    const tipo=($('#audTipo')||{}).value||'situacional';const row={suc,fecha:iso(now),auditor:S.uid,estado:'borrador',data:{tipo,llegada:fHora(now),it:{},obs:''}};if(tipo==='situacional')row.data.pres=audPres(row);else audInit(row);
     const{data,error}=await S.sb.from('auditorias').insert(row).select().single();nv.disabled=false;
     if(error){flash('aud','err',errText(error));return}S.aud=[data,...(S.aud||[])];S.audSel=data.id;render();window.scrollTo(0,0)};
   const a=S.audSel&&(S.aud||[]).find(x=>x.id===S.audSel);if(!a)return;a.data=a.data||{};a.data.it=a.data.it||{};
@@ -552,6 +559,14 @@ function bindAuditorias(){
   $$('[data-av]').forEach(b=>b.onclick=()=>{const k=b.dataset.av;const it=a.data.it[k]=a.data.it[k]||{};it.v=it.v===b.dataset.v?undefined:b.dataset.v;const y=window.scrollY;render();window.scrollTo(0,y);audLater(a)});
   $$('[data-ac]').forEach(i=>i.oninput=()=>{const it=a.data.it[i.dataset.ac]=a.data.it[i.dataset.ac]||{};it.c=i.value;audLater(a)});
   const ob=$('#audObs');if(ob)ob.oninput=()=>{a.data.obs=ob.value;audLater(a)};
+  if(tipoAud(a)!=='situacional')audInit(a);
+  $$('[data-ad]').forEach(el=>{const p=el.dataset.ad;const up=()=>{setP(a.data,p,el.value);audLater(a)};el.addEventListener('input',up);el.addEventListener('change',()=>{up();setTimeout(()=>{const f=document.activeElement;const fid=f&&f.dataset?f.dataset.ad:null;const y=window.scrollY;render();window.scrollTo(0,y);if(fid){const n=document.querySelector(`[data-ad="${fid}"]`);if(n){n.focus();try{const L=String(n.value||'').length;n.setSelectionRange&&n.setSelectionRange(L,L)}catch(e){}}}},0)})});
+  $$('[data-addrow]').forEach(b=>b.onclick=()=>{const k=b.dataset.addrow;a.data[k]=a.data[k]||[];a.data[k].push({});const y=window.scrollY;render();window.scrollTo(0,y);audLater(a)});
+  const az=$('#bolAzar');if(az)az.onclick=()=>{const i0=parseInt($('#bolIni').value,10),i1=parseInt($('#bolFin').value,10),n=Math.min(30,parseInt($('#bolN').value,10)||5);
+    if(!(i1>=i0)||i1-i0+1<n){flash('aud','err','Revisa el rango: el folio final debe ser mayor y alcanzar para la cantidad.');return}
+    const set=new Set();while(set.size<n)set.add(i0+Math.floor(Math.random()*(i1-i0+1)));const F=[...set].sort((x,y)=>x-y);
+    const prev=(a.data.bol||[]).filter(x=>Object.values(x).some(v=>String(v??'').trim()));a.data.bol=[...prev,...F.map(f=>({fo:String(f)}))];a.data.azar={ini:i0,fin:i1,n,at:ahora().toISOString()};
+    flash('aud','ok',`Folios elegidos al azar: ${F.join(', ')}.`);const y=window.scrollY;render();window.scrollTo(0,y);audLater(a)};
   const fi=$('#audFoto');$$('[data-af]').forEach(b=>b.onclick=()=>{S.audFotoK=b.dataset.af;fi.click()});
   if(fi)fi.onchange=async()=>{const f=fi.files[0];fi.value='';if(!f)return;const k=S.audFotoK;flash('aud','ok','Subiendo foto…');
     try{const g=await comprimir(f);const path=`${a.id}/${k.replace(/[^a-z0-9._-]/gi,'_')}_${Date.now().toString(36)}.jpg`;
@@ -559,22 +574,158 @@ function bindAuditorias(){
       const it=a.data.it[k]=a.data.it[k]||{};it.f=[...(it.f||[]),{path,nombre:f.name,at:ahora().toISOString()}];await audGuardar(a);flash('aud','ok','Foto agregada.');const y=window.scrollY;render();window.scrollTo(0,y)}
     catch(e){flash('aud','err','No se pudo subir la foto: '+errText(e))}};
   $$('[data-aimgsrc]').forEach(im=>audUrl(im.dataset.aimgsrc).then(u=>{if(u){im.src=u;const l=im.closest('a');if(l)l.href=u}}));
-  const cz=$('#audCerrar');if(cz)cz.onclick=async()=>{const c=audCalc(a);if(c.falta){flash('aud','err',`Faltan ${c.falta} punto(s) por revisar. Marca Cumple, No cumple o N.A. en todos.`);return}
+  const cz=$('#audCerrar');if(cz)cz.onclick=async()=>{if(tipoAud(a)!=='situacional'){const f=audFaltaFormato(a);if(f){flash('aud','err',f);return}clearTimeout(S.audT);a.data.salida=fHora(ahora());if(await audGuardar(a,{estado:'cerrada'})){flash('aud','ok','Auditoría cerrada. Ya no se puede modificar.');render()}return}
+    const c=audCalc(a);if(c.falta){flash('aud','err',`Faltan ${c.falta} punto(s) por revisar. Marca Cumple, No cumple o N.A. en todos.`);return}
     const sinDesc=audItems(a).filter(x=>(a.data.it[x.k]||{}).v==='no'&&!String((a.data.it[x.k]||{}).c||'').trim());if(sinDesc.length){flash('aud','err','Describe lo que encontraste en cada "No cumple" ('+sinDesc.length+' sin comentario).');return}
     clearTimeout(S.audT);a.data.salida=fHora(ahora());if(await audGuardar(a,{estado:'cerrada'})){flash('aud','ok','Auditoría cerrada. Ya no se puede modificar.');render()}};
   const ra=$('#audReabrir');if(ra)ra.onclick=async()=>{if(await audGuardar(a,{estado:'borrador'}))render()};
   const bo=$('#audBorrar');if(bo)bo.onclick=async()=>{if(bo.dataset.ok!=='1'){bo.dataset.ok='1';bo.textContent='Toca otra vez para eliminar';return}
     const{error}=await S.sb.from('auditorias').delete().eq('id',a.id);if(error){flash('aud','err',errText(error));return}S.aud=S.aud.filter(x=>x.id!==a.id);S.audSel=null;render()};
 }
+/* ---- aplicativos 2 a 5 ---- */
+const AUD_TIPOS=[['situacional','Auditoría situacional'],['arqueo','Arqueo administrativo'],['conteo','Conteo de prendas, caja fuerte y bodegas'],['inventario','Levantamiento de inventarios'],['valuadas','Comprobación de prendas valuadas']];
+const tipoAud=a=>((a&&a.data)||{}).tipo||'situacional';
+const nomTipo=t=>(AUD_TIPOS.find(x=>x[0]===t)||[0,'Auditoría'])[1];
+const getP=(o,p)=>p.split('.').reduce((x,k)=>x==null?x:x[k],o);
+function setP(o,p,v){const ks=p.split('.');let x=o;ks.slice(0,-1).forEach((k,i)=>{if(x[k]==null)x[k]=/^\d+$/.test(ks[i+1])?[]:{};x=x[k]});x[ks[ks.length-1]]=v}
+const CF_UBIC=['Caja fuerte','Bodega','Almacén','Vitrina','Otro'];
+function cajasAud(){const a=actById('cuadre_caja');return(a&&a.cajas&&a.cajas.length)?a.cajas:['Tómbola SIDEM','Tómbola DS','Otras sucursales']}
+function audInit(a){const d=a.data=a.data||{};const t=tipoAud(a);
+  if(t==='arqueo'){d.caja=d.caja||{};d.caja.rows=d.caja.rows||cajasAud().map(c=>({c}))}
+  if(t==='conteo'){d.joy=d.joy||{};d.piso=d.piso||{};d.cf=d.cf||[{},{},{}]}
+  if(t==='inventario'){d.inv=d.inv||[{},{},{},{},{}]}
+  if(t==='valuadas'){d.bol=d.bol||[{},{},{},{},{}]}
+  return d}
+function regDe(act,suc,fecha,ult){const L=[];cfgCols().forEach(c=>Object.values(S.idx[c.id]||{}).forEach(r=>{if(r.act===act&&(r.suc||c.suc)===suc&&hecho(r)&&(ult?String(r.per)<=fecha:r.per===fecha))L.push({c,r})}));L.sort((x,y)=>String(y.r.per).localeCompare(String(x.r.per))||String(y.r.at).localeCompare(String(x.r.at)));return L[0]||null}
+function difConteo(d,J){return(J?JOYAS:PISO).map(([k,l])=>{const x=(d||{})[k]||{};const fis=J?num(x.p)+num(x.o):num(x.f);return{k,l,s:num(x.s),fis,dif:fis-num(x.s),lleno:String(x.s??'').trim()!==''}})}
+function audResumen(a){const t=tipoAud(a);const d=a.data||{};
+  if(t==='situacional'){const c=audCalc(a);return[c.pct==null?c.nivel[0]:`${c.pct}% · ${c.nivel[0]}`,c.nivel[1]]}
+  if(t==='arqueo'){const T=totCaja((d.caja||{}).rows);if(!(d.caja||{}).rows||!T.sis&&!T.fis)return['Sin capturar',''];return T.dif===0?['Cuadra','good']:[`${T.dif>0?'Sobrante':'Faltante'} ${m2(Math.abs(T.dif))}`,T.dif>0?'warn':'bad']}
+  if(t==='conteo'){const D=[...difConteo(d.joy,1),...difConteo(d.piso,0)].filter(x=>x.lleno&&x.dif!==0).length+(d.cf||[]).filter(x=>String(x.e??'').trim()!==''&&num(x.f)-num(x.e)!==0).length;return D?[`${D} renglón(es) con diferencia`,'bad']:['Sin diferencias','good']}
+  if(t==='inventario'){const R=(d.inv||[]).filter(x=>String(x.a||'').trim());const D=R.filter(x=>num(x.f)-num(x.e)!==0).length;return R.length?(D?[`${D} de ${R.length} con diferencia`,'bad']:[`${R.length} sin diferencia`,'good']):['Sin capturar','']}
+  if(t==='valuadas'){const R=(d.bol||[]).filter(x=>String(x.fo||'').trim());const H=R.filter(bolHallazgo).length;return R.length?(H?[`${H} de ${R.length} boletas con hallazgo`,'bad']:[`${R.length} boletas sin hallazgo`,'good']):['Sin capturar','']}
+  return['','']}
+function bolHallazgo(x){return x.ex==='no'||x.dc==='no'||x.ce==='no'||x.cd==='no'||(num(x.vc)>0&&num(x.mp)>num(x.vc)*1.0001)}
+const inA=(p,v,ro,o)=>`<input class="in ${o&&o.cls||''}" data-ad="${p}" value="${esc(v??'')}" ${o&&o.num?'inputmode="decimal"':''} ${o&&o.ph?`placeholder="${esc(o.ph)}"`:''} ${ro?'disabled':''} aria-label="${esc(o&&o.al||p)}">`;
+const selA=(p,v,ops,ro,al)=>`<select class="sel" data-ad="${p}" ${ro?'disabled':''} aria-label="${esc(al||p)}"><option value=""></option>${ops.map(o=>{const[k,l]=Array.isArray(o)?o:[o,o];return`<option value="${esc(k)}" ${v===k?'selected':''}>${esc(l)}</option>`}).join('')}</select>`;
+const difTd=v=>`<td class="n"><b style="color:${v===0?'var(--good)':v>0?'var(--warn)':'var(--bad)'}">${v>0?'+':''}${v}</b></td>`;
+function vAudFormato(a,ro){const t=tipoAud(a);const d=audInit(a);let h='';
+  if(t==='arqueo'){const R=d.caja.rows;const T=totCaja(R);const ult=regDe('cuadre_caja',a.suc,a.fecha,true);
+    h+=`<div class="card"><h3>Desglose de efectivo por caja</h3><p class="note">Captura las piezas de cada billete, la morralla y los vales en pesos, y lo que debe tener cada caja según el sistema al momento del arqueo.</p>
+    <div class="tbl"><table><thead><tr><th>Concepto</th>${R.map(x=>`<th class="n">${esc(x.c)}</th>`).join('')}</tr></thead><tbody>
+    <tr><td><b>Debe tener (sistema) $</b></td>${R.map((x,i)=>`<td>${inA(`caja.rows.${i}.sis`,x.sis,ro,{num:1,al:x.c+' sistema'})}</td>`).join('')}</tr>
+    ${DEN.map(dn=>`<tr><td>Billetes de $${dn} (piezas)</td>${R.map((x,i)=>`<td>${inA(`caja.rows.${i}.d${dn}`,x['d'+dn],ro,{num:1,al:x.c+' billetes '+dn})}</td>`).join('')}</tr>`).join('')}
+    <tr><td>Morralla $</td>${R.map((x,i)=>`<td>${inA(`caja.rows.${i}.mor`,x.mor,ro,{num:1,al:x.c+' morralla'})}</td>`).join('')}</tr>
+    <tr><td>Vales $</td>${R.map((x,i)=>`<td>${inA(`caja.rows.${i}.val`,x.val,ro,{num:1,al:x.c+' vales'})}</td>`).join('')}</tr></tbody></table></div></div>
+    <div class="card"><h3>Resumen del arqueo</h3><div class="tbl"><table><thead><tr><th>Caja</th><th class="n">Sistema</th><th class="n">Billetes</th><th class="n">Morralla</th><th class="n">Vales</th><th class="n">Físico</th><th class="n">Diferencia</th></tr></thead><tbody>
+    ${R.map(x=>{const c=calcCaja(x);return`<tr><td><b>${esc(x.c)}</b></td><td class="n">${m2(x.sis)}</td><td class="n">${m2(c.bil)}</td><td class="n">${m2(x.mor)}</td><td class="n">${m2(x.val)}</td><td class="n">${m2(c.fis)}</td><td class="n"><b style="color:${c.dif===0?'var(--good)':c.dif>0?'var(--warn)':'var(--bad)'}">${sm(c.dif)}</b></td></tr>`}).join('')}
+    <tr class="tot"><td>Totales</td><td class="n">${m2(T.sis)}</td><td class="n">${m2(T.bil)}</td><td class="n">${m2(T.mor)}</td><td class="n">${m2(T.val)}</td><td class="n">${m2(T.fis)}</td><td class="n"><b>${sm(T.dif)}</b></td></tr></tbody></table></div>
+    <p class="note"><b>Último cuadre de la encargada:</b> ${ult?(()=>{const U=totCaja((ult.r.datos||{}).rows);return`${fCorta(D0(ult.r.per))} · ${esc(nombreCorto(ult.c))} · sistema ${m2(U.sis)} · físico ${m2(U.fis)} · diferencia ${sm(U.dif)}`})():'no hay cuadre registrado.'}</p></div>`}
+  if(t==='conteo'){const encJ=regDe('conteo_joyeria',a.suc,a.fecha),encP=regDe('conteo_piso',a.suc,a.fecha);
+    const grid=(J,obj,enc)=>{const E=enc?difConteo((enc.r.datos||{}).rows,J):null;const base=J?'joy':'piso';
+      return`<div class="card"><h3>${J?'Joyería (almacén venta)':'Piso de venta'}</h3><p class="note">Conteo de la encargada de hoy: ${enc?`${esc(nombreCorto(enc.c))} a las ${fHora(new Date(enc.r.at))}`:'no registrado'}.</p>
+      <div class="tbl"><table><thead><tr><th>${J?'Tipo de prenda':'Línea'}</th><th class="n">SIDEM</th>${J?'<th class="n">Plata</th><th class="n">Oro</th>':'<th class="n">Físicos</th>'}<th class="n">Diferencia</th><th class="n">Físico encargada</th><th class="n">Auditor vs encargada</th></tr></thead><tbody>
+      ${difConteo(obj,J).map((x,i)=>{const r=(obj||{})[x.k]||{};const e=E?E[i]:null;const vs=e&&x.lleno?x.fis-e.fis:null;
+        return`<tr><td><b>${esc(x.l)}</b></td><td>${inA(`${base}.${x.k}.s`,r.s,ro,{num:1,al:x.l+' SIDEM'})}</td>${J?`<td>${inA(`${base}.${x.k}.p`,r.p,ro,{num:1,al:x.l+' plata'})}</td><td>${inA(`${base}.${x.k}.o`,r.o,ro,{num:1,al:x.l+' oro'})}</td>`:`<td>${inA(`${base}.${x.k}.f`,r.f,ro,{num:1,al:x.l+' físicos'})}</td>`}${x.lleno?difTd(x.dif):'<td class="n">—</td>'}<td class="n">${e?e.fis:'—'}</td>${vs==null?'<td class="n">—</td>':difTd(vs)}</tr>`}).join('')}</tbody></table></div></div>`};
+    h+=grid(1,d.joy,encJ)+grid(0,d.piso,encP);
+    h+=`<div class="card"><h3>Caja fuerte y bodegas</h3><div class="tbl"><table><thead><tr><th>Ubicación</th><th>Descripción</th><th class="n">Esperado</th><th class="n">Físico</th><th class="n">Diferencia</th><th>Comentario</th></tr></thead><tbody>
+      ${d.cf.map((x,i)=>`<tr><td>${selA(`cf.${i}.u`,x.u,CF_UBIC,ro,'Ubicación')}</td><td>${inA(`cf.${i}.de`,x.de,ro,{al:'Descripción',ph:'Ej. sobres de oro, motos'})}</td><td>${inA(`cf.${i}.e`,x.e,ro,{num:1,al:'Esperado'})}</td><td>${inA(`cf.${i}.f`,x.f,ro,{num:1,al:'Físico'})}</td>${String(x.e??'').trim()!==''?difTd(num(x.f)-num(x.e)):'<td class="n">—</td>'}<td>${inA(`cf.${i}.c`,x.c,ro,{al:'Comentario'})}</td></tr>`).join('')}
+      </tbody></table></div>${ro?'':'<button class="btn sm" type="button" data-addrow="cf">+ Agregar renglón</button>'}</div>`}
+  if(t==='inventario'){h+=`<div class="card"><h3>Levantamiento de inventario</h3><p class="note">Un renglón por almacén, línea o sublínea revisada.</p><div class="tbl"><table><thead><tr><th>Almacén / línea</th><th>Folio SIDEM</th><th class="n">Existencia SIDEM</th><th class="n">Físico</th><th class="n">Diferencia</th><th>Comentario</th></tr></thead><tbody>
+      ${d.inv.map((x,i)=>`<tr><td>${inA(`inv.${i}.a`,x.a,ro,{al:'Almacén o línea'})}</td><td>${inA(`inv.${i}.fo`,x.fo,ro,{al:'Folio'})}</td><td>${inA(`inv.${i}.e`,x.e,ro,{num:1,al:'Existencia SIDEM'})}</td><td>${inA(`inv.${i}.f`,x.f,ro,{num:1,al:'Físico'})}</td>${String(x.a||'').trim()?difTd(num(x.f)-num(x.e)):'<td class="n">—</td>'}<td>${inA(`inv.${i}.c`,x.c,ro,{al:'Comentario'})}</td></tr>`).join('')}
+      </tbody></table></div>${ro?'':'<button class="btn sm" type="button" data-addrow="inv">+ Agregar renglón</button>'}</div>`}
+  if(t==='valuadas'){const sn=[['si','Sí'],['no','No']];
+    h+=`${ro?'':`<div class="card"><h3>Muestra al azar</h3><p class="note">Escribe el rango de folios de boletas del periodo y cuántas revisar; el sistema elige los folios al azar.</p><div class="row"><label class="fl">Folio inicial<input class="in" id="bolIni" inputmode="numeric"></label><label class="fl">Folio final<input class="in" id="bolFin" inputmode="numeric"></label><label class="fl">Cantidad<input class="in" id="bolN" inputmode="numeric" value="5"></label><button class="btn" type="button" id="bolAzar" style="align-self:flex-end">Elegir al azar</button></div></div>`}
+    ${d.bol.map((x,i)=>{const dif=num(x.vc)?num(x.mp)-num(x.vc):null;const pct=num(x.vc)?Math.round((num(x.mp)/num(x.vc)-1)*1000)/10:null;
+      return`<div class="card ${bolHallazgo(x)?'aud-bad':''}"><div class="row"><h3 style="flex:1">Boleta ${i+1}${x.fo?' · folio '+esc(x.fo):''}</h3>${bolHallazgo(x)?'<span class="pill vencida">Con hallazgo</span>':''}</div>
+      <div class="fgrid"><label class="fl">Folio${inA(`bol.${i}.fo`,x.fo,ro,{al:'Folio'})}</label><label class="fl">Cliente${inA(`bol.${i}.cl`,x.cl,ro,{al:'Cliente'})}</label><label class="fl">Prenda${inA(`bol.${i}.pr`,x.pr,ro,{al:'Prenda'})}</label><label class="fl">Fecha de la operación${inA(`bol.${i}.fe`,x.fe,ro,{al:'Fecha',ph:'dd/mm/aaaa'})}</label>
+      <label class="fl">Monto prestado $${inA(`bol.${i}.mp`,x.mp,ro,{num:1,al:'Monto prestado'})}</label><label class="fl">Valuación correcta $${inA(`bol.${i}.vc`,x.vc,ro,{num:1,al:'Valuación correcta'})}</label>
+      <div class="fl"><span>Sobrevaluación</span><div class="in hora-auto">${dif==null?'—':`<b style="color:${dif>0?'var(--bad)':'var(--good)'}">${sm(dif)} (${pct>0?'+':''}${pct}%)</b>`}</div></div>
+      <label class="fl">¿Existe la prenda?${selA(`bol.${i}.ex`,x.ex,sn,ro,'Existe la prenda')}</label><label class="fl">¿Datos de la boleta coinciden con la prenda?${selA(`bol.${i}.dc`,x.dc,sn,ro,'Datos coinciden')}</label>
+      <label class="fl">Llamada: ¿existe el cliente?${selA(`bol.${i}.ce`,x.ce,[['si','Sí'],['no','No'],['nc','No contestó']],ro,'Cliente existe')}</label><label class="fl">¿Datos y fechas congruentes?${selA(`bol.${i}.cd`,x.cd,sn,ro,'Datos congruentes')}</label>
+      <label class="fl">¿Lo entregado coincide con lo recibido?${selA(`bol.${i}.er`,x.er,sn,ro,'Entregado coincide')}</label><label class="fl">Atención recibida (1 a 5)${selA(`bol.${i}.at`,x.at,['1','2','3','4','5'],ro,'Atención')}</label></div>
+      <label class="fl">Comentario${inA(`bol.${i}.c`,x.c,ro,{al:'Comentario'})}</label></div>`}).join('')}
+    ${ro?'':'<button class="btn sm" type="button" data-addrow="bol">+ Agregar boleta</button>'}`}
+  const gf=((d.it||{}).gen||{}).f||[];
+  h+=`<div class="card"><div class="row"><h3 style="flex:1">Fotos de evidencia</h3>${ro?'':'<button type="button" class="btn sm" data-af="gen">📷 Agregar foto</button>'}</div>${gf.length?`<div class="aud-fs">${gf.map((f,i)=>`<a href="#" target="_blank" rel="noopener"><img alt="Foto ${i+1}" data-aimgsrc="${esc(f.path)}"></a>`).join('')}</div>`:'<p class="note">Sin fotos.</p>'}</div>`;
+  return h}
+function audFaltaFormato(a){const t=tipoAud(a);const d=a.data||{};
+  if(t==='arqueo')return(d.caja.rows||[]).some(x=>String(x.sis??'').trim()==='')?'Captura lo que debe tener cada caja según el sistema.':'';
+  if(t==='conteo')return[...difConteo(d.joy,1),...difConteo(d.piso,0)].some(x=>!x.lleno)?'Captura el SIDEM y el físico de todos los renglones de joyería y piso de venta (pon 0 si no hay).':'';
+  if(t==='inventario')return(d.inv||[]).some(x=>String(x.a||'').trim())?'':'Captura al menos un renglón de inventario.';
+  if(t==='valuadas'){const R=(d.bol||[]).filter(x=>String(x.fo||'').trim());if(!R.length)return'Captura al menos una boleta.';const m=R.find(x=>!x.mp||!x.vc||!x.ex||!x.ce);return m?`Completa monto, valuación, si existe la prenda y la llamada en la boleta ${esc(m.fo)}.`:''}
+  return''}
+function pdfAudFormato(doc,a,y,H,W){const t=tipoAud(a);const sec=tt=>{if(y>H-90){doc.addPage();y=60}doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...AZ);doc.text(tt,36,y);y+=6};const d=a.data||{};const head=c=>({head:[c],styles:{fontSize:8.5,cellPadding:4,textColor:[22,35,42],lineColor:[215,225,230],lineWidth:0.5}});
+  const dc=v=>v===0?[29,134,87]:v>0?[168,106,16]:[192,64,44];
+  const tab=(o)=>{AT(doc,Object.assign({startY:y},o));y=lastY(doc)+16};
+  if(t==='arqueo'){const R=(d.caja||{}).rows||[];const T=totCaja(R);sec('RESUMEN DEL ARQUEO');y+=0;
+    const body=R.map(x=>{const c=calcCaja(x);return[x.c,m2(x.sis),m2(c.bil),m2(x.mor),m2(x.val),m2(c.fis),sm(c.dif)]});body.push(['Totales',m2(T.sis),m2(T.bil),m2(T.mor),m2(T.val),m2(T.fis),sm(T.dif)]);
+    tab(Object.assign(head(['Caja','Sistema','Billetes','Morralla','Vales','Físico','Diferencia']),{body,columnStyles:{1:{halign:'right'},2:{halign:'right'},3:{halign:'right'},4:{halign:'right'},5:{halign:'right'},6:{halign:'right',fontStyle:'bold'}},didParseCell:q=>{if(q.section==='body'&&q.row.index===body.length-1){q.cell.styles.fontStyle='bold';q.cell.styles.fillColor=[255,241,204]}}}));
+    sec('DESGLOSE DE BILLETES (PIEZAS)');tab(Object.assign(head(['Denominación',...R.map(x=>x.c)]),{body:DEN.map(dn=>['$'+dn,...R.map(x=>String(num(x['d'+dn])))])}));
+    const ult=regDe('cuadre_caja',a.suc,a.fecha,true);sec('COMPARACIÓN CON EL ÚLTIMO CUADRE DE LA ENCARGADA');
+    if(ult){const U=totCaja((ult.r.datos||{}).rows);tab(Object.assign(head(['Fecha','Registró','Sistema','Físico','Diferencia']),{body:[[fCorta(D0(ult.r.per)),nombreCorto(ult.c),m2(U.sis),m2(U.fis),sm(U.dif)]]}))}else{doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(22,35,42);doc.text('No hay cuadre registrado.',36,y+10);y+=24}}
+  if(t==='conteo'){const encJ=regDe('conteo_joyeria',a.suc,a.fecha),encP=regDe('conteo_piso',a.suc,a.fecha);
+    const g=(J,obj,enc,tt)=>{const E=enc?difConteo((enc.r.datos||{}).rows,J):null;sec(tt);const rows=difConteo(obj,J).map((x,i)=>{const r=(obj||{})[x.k]||{};const e=E?E[i]:null;return[x.l,String(x.s),...(J?[String(num(r.p)),String(num(r.o))]:[String(x.fis)]),(x.dif>0?'+':'')+x.dif,e?String(e.fis):'—',e?((x.fis-e.fis>0?'+':'')+(x.fis-e.fis)):'—']});
+      const dcol=J?4:3;tab(Object.assign(head([J?'Tipo de prenda':'Línea','SIDEM',...(J?['Plata','Oro']:['Físicos']),'Diferencia','Físico encargada','Auditor vs encargada']),{body:rows,didParseCell:q=>{if(q.section==='body'&&(q.column.index===dcol||q.column.index===dcol+2)){const v=parseFloat(q.cell.raw);if(isFinite(v)){q.cell.styles.textColor=dc(v);q.cell.styles.fontStyle='bold'}}}}))};
+    g(1,d.joy,encJ,'JOYERÍA (ALMACÉN VENTA)'+(encJ?` · encargada: ${nombreCorto(encJ.c)}`:' · sin conteo de la encargada'));g(0,d.piso,encP,'PISO DE VENTA'+(encP?` · encargada: ${nombreCorto(encP.c)}`:' · sin conteo de la encargada'));
+    const cf=(d.cf||[]).filter(x=>x.u||x.de||String(x.e??'').trim());sec('CAJA FUERTE Y BODEGAS');tab(Object.assign(head(['Ubicación','Descripción','Esperado','Físico','Diferencia','Comentario']),{body:cf.length?cf.map(x=>[x.u||'',x.de||'',String(num(x.e)),String(num(x.f)),(num(x.f)-num(x.e)>0?'+':'')+(num(x.f)-num(x.e)),x.c||'']):[['Sin renglones','','','','','']]}))}
+  if(t==='inventario'){const R=(d.inv||[]).filter(x=>String(x.a||'').trim());sec('LEVANTAMIENTO DE INVENTARIO');tab(Object.assign(head(['Almacén / línea','Folio SIDEM','Existencia SIDEM','Físico','Diferencia','Comentario']),{body:R.length?R.map(x=>[x.a,x.fo||'',String(num(x.e)),String(num(x.f)),(num(x.f)-num(x.e)>0?'+':'')+(num(x.f)-num(x.e)),x.c||'']):[['Sin renglones','','','','','']],didParseCell:q=>{if(q.section==='body'&&q.column.index===4){const v=parseFloat(q.cell.raw);if(isFinite(v)){q.cell.styles.textColor=dc(v);q.cell.styles.fontStyle='bold'}}}}))}
+  if(t==='valuadas'){const R=(d.bol||[]).filter(x=>String(x.fo||'').trim());const SN={si:'Sí',no:'No',nc:'No contestó'};sec('MUESTRA DE BOLETAS');
+    tab(Object.assign(head(['Folio','Cliente / prenda','Prestado','Valuación correcta','Sobrevaluación','Existe prenda','Datos coinciden','Cliente existe','Datos congruentes','Entregado = recibido','Atención']),{styles:{fontSize:7.5,cellPadding:3,textColor:[22,35,42],lineColor:[215,225,230],lineWidth:0.5},
+      body:R.map(x=>[x.fo,`${x.cl||''}${x.pr?' · '+x.pr:''}`,m2(x.mp),m2(x.vc),num(x.vc)?sm(num(x.mp)-num(x.vc)):'—',SN[x.ex]||'—',SN[x.dc]||'—',SN[x.ce]||'—',SN[x.cd]||'—',SN[x.er]||'—',x.at||'—']),
+      didParseCell:q=>{if(q.section!=='body')return;const v=String(q.cell.raw);if(v==='No'||(q.column.index===4&&v.startsWith('+'))){q.cell.styles.textColor=[192,64,44];q.cell.styles.fontStyle='bold'}}}));
+    const C=R.filter(x=>x.c);if(C.length){sec('COMENTARIOS POR BOLETA');tab(Object.assign(head(['Folio','Comentario']),{body:C.map(x=>[x.fo,x.c])}))}}
+  return y}
+/* ---- acciones correctivas ---- */
+function accEstado(x){if(x.estado==='verificada')return['Verificada','ok'];if(x.estado==='hecha')return['Hecha · por verificar','hoy'];return iso(ahora())>x.limite?['Vencida','vencida']:['Pendiente','hoy']}
+function accDeAud(id){return(S.acc||[]).filter(x=>x.aud_id===id)}
+function accTabla(L,gestion){if(!L.length)return'<p class="note">Sin acciones correctivas.</p>';
+  return`<div class="tbl"><table><thead><tr><th>Responsable</th><th>Sucursal</th><th>Acción</th><th>Límite</th><th>Estado</th><th>Respuesta</th>${gestion?'<th></th>':''}</tr></thead><tbody>
+  ${L.map(x=>{const e=accEstado(x);const r=(x.data||{}).resp;const c=colById(x.colab);return`<tr><td>${esc(c?nombreCorto(c):x.colab)}</td><td>${esc(x.suc||'')}</td><td>${esc(x.descripcion)}</td><td>${fCorta(D0(x.limite))}</td><td><span class="pill ${e[1]}">${e[0]}</span></td>
+   <td>${r?`${esc(r.nota||'')}${(r.f||[]).length?` <a href="#" data-accimg="${esc(r.f[0].path)}">ver foto</a>`:''}<div class="note">${fCorta(new Date(r.at))} ${fHora(new Date(r.at))}</div>`:'—'}</td>
+   ${gestion?`<td style="white-space:nowrap">${x.estado==='hecha'?`<button class="btn sm pri" type="button" data-accver="${x.id}">Verificar</button> <button class="btn sm" type="button" data-accreg="${x.id}">Regresar</button>`:''}${x.estado!=='verificada'?` <button class="btn sm danger" type="button" data-accdel="${x.id}">Quitar</button>`:''}</td>`:''}</tr>`}).join('')}</tbody></table></div>`}
+function accForm(a,pre){const C=cfgCols().filter(c=>c.activo!==false);const def=iso(addD(ahora(),3));
+  return`<div class="acc-f" id="accForm"><div class="fgrid"><label class="fl">Responsable<select class="sel" id="accCol">${C.map(c=>`<option value="${c.id}" ${lugarDe(c,D0(a.fecha))===a.suc&&c.puesto==='enc'?'selected':''}>${esc(nombreCorto(c))} · ${esc(PUESTOS[c.puesto]||c.puesto)}</option>`).join('')}</select></label>
+   <label class="fl">Fecha límite<input class="in" type="date" id="accLim" value="${def}" min="${iso(ahora())}"></label></div>
+   <label class="fl">Acción a realizar<textarea class="in" id="accDesc" rows="2" placeholder="Qué debe corregir y cómo">${esc(pre||'')}</textarea></label>
+   <button class="btn pri" type="button" id="accCrear">Crear acción correctiva</button><p class="note">Le aparece al responsable en "Mis actividades" con alerta. Solo ve el texto de la acción, no la auditoría.</p></div>`}
+function vAccAud(a){const gestion=S.admin||esAuditor();if(!gestion)return'';
+  return`<div class="card"><h3>Acciones correctivas</h3>${accTabla(accDeAud(a.id),true)}<details class="cj-det" ${S.accPre?'open':''}><summary>+ Nueva acción correctiva</summary>${accForm(a,S.accPre)}</details></div>`}
+function vAccMis(col){const L=(S.acc||[]).filter(x=>x.colab===col.id&&x.estado==='pendiente').sort((x,y)=>x.limite.localeCompare(y.limite));if(!L.length)return'';
+  return`<div class="card acc-mis"><h3>Acciones correctivas pendientes <span class="badge">${L.length}</span></h3><p class="note">Las asignó Dirección o Auditoría. Al terminar, márcala como hecha y explica qué hiciste; puedes agregar una foto.</p>
+  ${L.map(x=>{const e=accEstado(x);return`<div class="acc-it"><div><b>${esc(x.descripcion)}</b><div class="note">Límite ${fLarga(D0(x.limite))}${x.suc?' · Suc. '+esc(x.suc):''} · <span class="pill ${e[1]}">${e[0]}</span></div></div>
+   ${S.accResp===x.id?`<div class="acc-r"><label class="fl">¿Qué hiciste?<textarea class="in" id="accNota" rows="2"></textarea></label><div class="row"><button class="btn" type="button" id="accFotoB">📷 Foto (opcional)</button><span class="note" id="accFotoN">${S.accFoto?esc(S.accFoto.name):''}</span></div><input id="accFotoIn" class="vh" type="file" accept="image/*" capture="environment">
+     <div class="row"><button class="btn pri" type="button" data-accok="${x.id}">Enviar como hecha</button><button class="btn" type="button" id="accCancel">Cancelar</button></div></div>`:`<button class="btn pri sm" type="button" data-accresp="${x.id}">Marcar como hecha</button>`}</div>`}).join('')}</div>`}
+async function accUpd(id,patch){const{error}=await S.sb.from('acciones').update(patch).eq('id',id);if(error){flash(S.tab==='mis'?'main':'aud','err',errText(error));return false}const x=(S.acc||[]).find(z=>z.id===id);if(x)Object.assign(x,patch);return true}
+function bindAcc(){
+  const cr=$('#accCrear');if(cr)cr.onclick=async()=>{const a=(S.aud||[]).find(x=>x.id===S.audSel);const desc=$('#accDesc').value.trim();const colab=$('#accCol').value;const lim=$('#accLim').value;
+    if(!desc||!lim){flash('aud','err','Escribe la acción y la fecha límite.');return}cr.disabled=true;
+    const c=colById(colab);const row={colab,suc:a?a.suc:(c&&c.suc)||'',descripcion:desc,limite:lim,estado:'pendiente',aud_id:a?a.id:null,creado_por:S.uid,data:{origen:a?nomTipo(tipoAud(a)):'Dirección'}};
+    const{data,error}=await S.sb.from('acciones').insert(row).select().single();cr.disabled=false;if(error){flash('aud','err',errText(error));return}
+    S.acc=[data,...(S.acc||[])];S.accPre='';flash('aud','ok','Acción correctiva creada.');const y=window.scrollY;render();window.scrollTo(0,y)};
+  $$('[data-accpre]').forEach(b=>b.onclick=()=>{S.accPre=b.dataset.accpre;const y=window.scrollY;render();const f=$('#accForm');if(f){f.scrollIntoView({block:'center'});$('#accDesc').focus()}else window.scrollTo(0,y)});
+  $$('[data-accver]').forEach(b=>b.onclick=async()=>{const x=S.acc.find(z=>z.id===b.dataset.accver);if(await accUpd(x.id,{estado:'verificada',data:Object.assign({},x.data,{verif:{at:ahora().toISOString(),por:S.uid}})}))render()});
+  $$('[data-accreg]').forEach(b=>b.onclick=async()=>{const x=S.acc.find(z=>z.id===b.dataset.accreg);if(await accUpd(x.id,{estado:'pendiente'}))render()});
+  $$('[data-accdel]').forEach(b=>b.onclick=async()=>{if(b.dataset.ok!=='1'){b.dataset.ok='1';b.textContent='¿Seguro?';return}const{error}=await S.sb.from('acciones').delete().eq('id',b.dataset.accdel);if(error){flash('aud','err',errText(error));return}S.acc=S.acc.filter(z=>z.id!==b.dataset.accdel);render()});
+  $$('[data-accimg]').forEach(l=>l.onclick=async e=>{e.preventDefault();const{data}=await S.sb.storage.from('evidencias').createSignedUrl(l.dataset.accimg,3600);if(data)window.open(data.signedUrl,'_blank','noopener')});
+  $$('[data-accresp]').forEach(b=>b.onclick=()=>{S.accResp=b.dataset.accresp;S.accFoto=null;render()});
+  const cc=$('#accCancel');if(cc)cc.onclick=()=>{S.accResp=null;S.accFoto=null;render()};
+  const fb=$('#accFotoB'),fi=$('#accFotoIn');if(fb&&fi){fb.onclick=()=>fi.click();fi.onchange=()=>{S.accFoto=fi.files[0]||null;$('#accFotoN').textContent=S.accFoto?S.accFoto.name:''}}
+  $$('[data-accok]').forEach(b=>b.onclick=async()=>{const x=S.acc.find(z=>z.id===b.dataset.accok);const nota=($('#accNota')||{}).value.trim();if(!nota){flash('main','err','Explica qué hiciste para corregirlo.');return}
+    b.disabled=true;let f=[];try{if(S.accFoto){const g=await comprimir(S.accFoto);const me=meCol();const path=`${me.id}/accion_${x.id}/${Date.now().toString(36)}.jpg`;const{error}=await S.sb.storage.from('evidencias').upload(path,g,{contentType:'image/jpeg',upsert:false});if(error)throw error;f=[{path,nombre:S.accFoto.name}]}}
+    catch(e){b.disabled=false;flash('main','err','No se pudo subir la foto: '+errText(e));return}
+    if(await accUpd(x.id,{estado:'hecha',data:Object.assign({},x.data,{resp:{nota,at:ahora().toISOString(),f}})})){S.accResp=null;S.accFoto=null;flash('main','ok','Acción enviada. Dirección o Auditoría la verificará.');render()}else b.disabled=false});
+}
 async function pdfAuditoria(a){const k='aud';
   try{flash(k,'ok','Preparando el PDF…');const d=a.data||{};const c=audCalc(a);const L=audItems(a);const it=d.it||{};
   const doc=pdfNew('p');const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight();
-  let y=pdfHead(doc,'AUDITORÍA SITUACIONAL',`Suc. ${a.suc} · ${fLarga(D0(a.fecha))}`);
+  const tA=tipoAud(a);let y=pdfHead(doc,nomTipo(tA).toUpperCase(),`Suc. ${a.suc} · ${fLarga(D0(a.fecha))}`);
   const sec=t=>{if(y>H-90){doc.addPage();y=60}doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...AZ);doc.text(t,36,y);y+=6};
   const kv={theme:'plain',styles:{fontSize:9.5,cellPadding:3},columnStyles:{0:{fontStyle:'bold',textColor:GR,cellWidth:120},2:{fontStyle:'bold',textColor:GR,cellWidth:120}}};
   const col=n=>n==='good'?[29,134,87]:n==='warn'?[168,106,16]:n==='bad'?[192,64,44]:[22,35,42];
   sec('DATOS DE LA VISITA');AT(doc,Object.assign({},kv,{startY:y,body:[['Fecha',fLarga(D0(a.fecha)),'Sucursal',a.suc],['Auditor',nombrePerfil(a.auditor),'Puesto','Auditor Supervisor de Operaciones'],['Hora de llegada',d.llegada||'—','Hora de salida',d.salida||'—'],['Estado',a.estado==='cerrada'?'Cerrada':'En proceso','Tipo de visita','No anunciada']]}));y=lastY(doc)+18;
-  sec('RESULTADO');AT(doc,Object.assign({},kv,{startY:y,body:[['Calificación general',c.pct==null?'—':c.pct+'%','Resultado',c.nivel[0]],['Faltas críticas',String(c.crit.length),'Puntos revisados',`${c.total-c.falta} de ${c.total}`],
+  if(tA!=='situacional'){const rs=audResumen(a);sec('RESULTADO');AT(doc,Object.assign({},kv,{startY:y,body:[['Resultado',rs[0],'Aplicativo',nomTipo(tA)]],didParseCell:q=>{if(q.section==='body'&&q.column.index===1){q.cell.styles.fontStyle='bold';q.cell.styles.textColor=col(rs[1])}}}));y=lastY(doc)+18;y=pdfAudFormato(doc,a,y,H,W)}
+  else{sec('RESULTADO');AT(doc,Object.assign({},kv,{startY:y,body:[['Calificación general',c.pct==null?'—':c.pct+'%','Resultado',c.nivel[0]],['Faltas críticas',String(c.crit.length),'Puntos revisados',`${c.total-c.falta} de ${c.total}`],
     ...[['pres','Presencia'],...AUD_B.map(b=>[b.k,b.t])].reduce((acc,[bk,bt],i,arr)=>{if(i%2===0){const n=arr[i+1];const f=x=>{const p=c.por[x]||{};return p.pct==null?'—':p.pct+'%'};acc.push([bt,f(bk),n?n[1]:'',n?f(n[0]):''])}return acc},[])],
     didParseCell:q=>{if(q.section==='body'&&q.row.index===0&&(q.column.index===1||q.column.index===3)){q.cell.styles.fontStyle='bold';q.cell.styles.textColor=col(c.nivel[1])}if(q.section==='body'&&q.row.index===1&&q.column.index===1&&c.crit.length){q.cell.styles.fontStyle='bold';q.cell.styles.textColor=[192,64,44]}}}));y=lastY(doc)+18;
   const R={si:'Cumple',no:'No cumple',na:'N.A.'};
@@ -582,15 +733,16 @@ async function pdfAuditoria(a){const k='aud';
     AT(doc,{startY:y,head:[['Punto revisado','Resultado','Comentario']],body:xs.map(x=>{const v=(it[x.k]||{});return[x.l+(x.cr?' (crítico)':''),R[v.v]||'Sin revisar',(v.c||'')+((v.f||[]).length?` [${v.f.length} foto(s)]`:'')]}),
       styles:{fontSize:8.5,cellPadding:4,textColor:[22,35,42],lineColor:[215,225,230],lineWidth:0.5},columnStyles:{0:{cellWidth:230},1:{cellWidth:70,fontStyle:'bold'}},
       didParseCell:q=>{if(q.section==='body'&&q.column.index===1){const s=String(q.cell.raw);q.cell.styles.textColor=s==='No cumple'?[192,64,44]:s==='Cumple'?[29,134,87]:GR}}});y=lastY(doc)+16};
-  tablaB('pres','Presencia y ocupacionalidad');AUD_B.forEach(b=>tablaB(b.k,b.t));
+  tablaB('pres','Presencia y ocupacionalidad');AUD_B.forEach(b=>tablaB(b.k,b.t));}
+  {const AC=accDeAud(a.id);if(AC.length){sec('ACCIONES CORRECTIVAS');AT(doc,{startY:y,head:[['Responsable','Acción','Límite','Estado','Respuesta']],body:AC.map(x=>{const c=colById(x.colab);const r=(x.data||{}).resp;return[c?nombreCorto(c):x.colab,x.descripcion,fCorta(D0(x.limite)),accEstado(x)[0],r?r.nota:'']}),styles:{fontSize:8.5,cellPadding:4,textColor:[22,35,42],lineColor:[215,225,230],lineWidth:0.5}});y=lastY(doc)+16}}
   sec('OBSERVACIONES GENERALES');doc.setFont('helvetica','normal');doc.setFontSize(9.5);doc.setTextColor(22,35,42);const ol=doc.splitTextToSize(d.obs||'Sin observaciones.',W-72);if(y+10+ol.length*12>H-50){doc.addPage();y=60}doc.text(ol,36,y+10);y+=10+ol.length*12+14;
   if(y>H-110){doc.addPage();y=60}y+=44;doc.setDrawColor(...GR);doc.setLineWidth(.6);doc.line(60,y,W/2-30,y);doc.line(W/2+30,y,W-60,y);doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(22,35,42);doc.text(nombrePerfil(a.auditor),(60+W/2-30)/2,y-6,{align:'center'});
   doc.setTextColor(...GR);doc.text('AUDITOR SUPERVISOR DE OPERACIONES',(60+W/2-30)/2,y+12,{align:'center'});doc.text('NOMBRE Y FIRMA ENCARGADA DE SUCURSAL',(W/2+30+W-60)/2,y+12,{align:'center'});
-  const fotos=[];L.forEach(x=>((it[x.k]||{}).f||[]).forEach(f=>fotos.push({f,x,v:(it[x.k]||{}).v})));const fallas=[];
+  const fotos=[];L.forEach(x=>((it[x.k]||{}).f||[]).forEach(f=>fotos.push({f,x,v:(it[x.k]||{}).v})));((it.gen||{}).f||[]).forEach(f=>fotos.push({f,x:{l:'Evidencia general'},v:''}));const fallas=[];
   for(const [i,o] of fotos.entries()){try{const im=await imgParaPdf(o.f,'auditorias');doc.addPage();let yy=pdfHead(doc,'EVIDENCIA FOTOGRÁFICA',`Auditoría Suc. ${a.suc} · ${fCorta(D0(a.fecha))}`);
     doc.setFont('helvetica','bold');doc.setFontSize(9.5);doc.setTextColor(22,35,42);const cap=doc.splitTextToSize(`Foto ${i+1} de ${fotos.length} · ${o.x.l} · ${R[o.v]||''}`,W-72);doc.text(cap,36,yy+4);yy+=cap.length*12+6;
     const mw=W-72,mh=H-yy-50;const sc=Math.min(mw/im.w,mh/im.h);doc.addImage(im.src,'JPEG',(W-im.w*sc)/2,yy,im.w*sc,im.h*sc)}catch(e){fallas.push(o.x.l)}}
-  pdfFoot(doc);await guardarArchivo(`Auditoria ${a.suc} ${a.fecha}.pdf`,doc,k);if(fallas.length)flash(k,'err','PDF listo, pero no se pudieron incluir '+fallas.length+' foto(s).');
+  pdfFoot(doc);await guardarArchivo(`${nomTipo(tA)} ${a.suc} ${a.fecha}.pdf`,doc,k);if(fallas.length)flash(k,'err','PDF listo, pero no se pudieron incluir '+fallas.length+' foto(s).');
   }catch(e){flash(k,'err','No se pudo generar el PDF: '+e.message)}}
 /* ============ rol de trabajo ============ */
 const LUG_ABR={'Centro':'C','Cuauhtémoc':'Q','Descanso':'D','Sin turno':'–'};const LUG_CIC=['','Centro','Cuauhtémoc','Descanso','Sin turno'];
@@ -738,7 +890,7 @@ function vMis(col,ro){
   const alerta=W.venc.length?`<div class="alerta bad" role="alert"><b>${W.venc.length}</b><span>${W.venc.length===1?'actividad vencida sin registrar':'actividades vencidas sin registrar'} en los últimos 14 días. ${ro?'':'Regístralas aunque sea tarde: quedan marcadas como "hecha tarde".'}</span></div>`
     :(W.todoHoy.length&&W.hechasHoy===W.todoHoy.length?`<div class="alerta ok"><b>Al día</b><span>Todas las actividades de hoy están registradas.</span></div>`:'');
   const sec=(t,L,vacio)=>`<section class="list"><div class="sec-h"><h3>${t}</h3><span class="note">${L.length} ${L.length===1?'actividad':'actividades'}</span></div>${L.length?L.map(i=>cardAct(i,W.R,now,ro)).join(''):`<div class="empty">${vacio}</div>`}</section>`;
-  return`${ro?'':`<div class="sec-h"><h2>Hola, ${esc(nombreCorto(col))}</h2><span class="note">${fLarga(now)}</span></div>`}
+  return`${ro?'':`<div class="sec-h"><h2>Hola, ${esc(nombreCorto(col))}</h2><span class="note">${fLarga(now)}</span></div>${vAccMis(col)}`}
   ${alerta}
   <div class="tiles"><div class="tile"><span>Hoy</span><b>${W.hechasHoy} / ${W.todoHoy.length}</b></div><div class="tile ${W.venc.length?'bad':''}"><span>Vencidas</span><b>${W.venc.length}</b></div><div class="tile ${st.pct>=0.9?'good':(st.pct<0.7?'bad':'')}"><span>Cumplimiento ${MESES[now.getMonth()]}</span><b>${p0(st.pct)}</b></div><div class="tile"><span>A tiempo</span><b>${p0(st.pctT)}</b></div></div>
   ${!ro&&col.puesto==='enc'&&porValidar(col,now).length?`<div class="alerta warn" role="status"><b>${porValidar(col,now).length}</b><span>registros de tu equipo por validar. <a href="#sucursal">Ir a Mi sucursal</a></span></div>`:''}
