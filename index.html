@@ -195,6 +195,16 @@ i.rc{width:16px;height:16px;vertical-align:middle;cursor:default}
 .acc-f{padding-top:10px}
 .link-box{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--azul);text-decoration:underline;background:#f4f6f8}
 table.asis .in{min-width:56px;padding:6px 8px}table.asis tr.off td{opacity:.45}
+.dash-svg{width:100%;height:auto;display:block;--c1:#0089b5;--c2:#c68400}.dash-svg .dg{stroke:var(--line);stroke-width:1}.dash-svg .dt{font-size:11px;fill:var(--muted)}.dash-svg .dl{font-size:12px;font-weight:600;fill:var(--ink)}
+.dash-leg{display:flex;gap:16px;font-size:.85rem;color:var(--ink-2);margin:6px 0;--c1:#0089b5;--c2:#c68400}.dash-leg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .dash-svg,:root:not([data-theme="light"]) .dash-leg{--c1:#1aa3d1;--c2:#b87d00}}
+:root[data-theme="dark"] .dash-svg,:root[data-theme="dark"] .dash-leg{--c1:#1aa3d1;--c2:#b87d00}
+.dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:14px;align-items:start}
+.dash-suc .kpis,.card>.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:10px 0}
+.kpi{display:flex;flex-direction:column;gap:2px}.kpi span{font-size:.74rem;color:var(--ink-2);text-transform:uppercase;letter-spacing:.04em}.kpi b{font-size:1.45rem;color:var(--ink)}.kpi small{font-size:.78rem;color:var(--muted)}
+.kpi b.good{color:var(--good,#1d8657)}.kpi b.warn{color:var(--warn,#a86a10)}.kpi b.bad{color:var(--bad,#c0402c)}
+.dash-op{border-top:1px dashed var(--line);padding-top:10px}
+@media(max-width:520px){.dash-grid{grid-template-columns:1fr}}
 .aud-it{border-top:1px solid var(--line);padding:10px 0;display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center}
 .aud-it.no{background:#fdf1ee;margin:0 -12px;padding:10px 12px}
 .aud-l{font-weight:600;font-size:.92rem}.aud-x{grid-column:1/-1;display:flex;gap:8px}.aud-x .in{flex:1}
@@ -458,6 +468,7 @@ function tabsDisponibles(){
   if(S.admin)t.push(['catalogo','Funciones y equipo']);
   if(S.admin)t.push(['usuarios','Usuarios']);
   if(S.admin)t.push(['auditorias','Auditorías']);
+  if(S.admin)t.unshift(['dash','Dashboard']);
   return t;
 }
 function draw(){
@@ -488,6 +499,7 @@ function draw(){
   else if(S.tab==='historial')V=vHistorial(me);
   else if(S.tab==='catalogo')V=vCatalogo();
   else if(S.tab==='roles')V=vRoles();
+  else if(S.tab==='dash')V=vDashboard();
   else if(S.tab==='auditorias')V=vAuditorias();
   else if(S.tab==='usuarios')V=vUsuarios();
   else if(S.tab==='ranking')V=vRanking();
@@ -785,6 +797,70 @@ async function pdfAuditoria(a){const k='aud';
     const mw=W-72,mh=H-yy-50;const sc=Math.min(mw/im.w,mh/im.h);doc.addImage(im.src,'JPEG',(W-im.w*sc)/2,yy,im.w*sc,im.h*sc)}catch(e){fallas.push(o.x.l)}}
   pdfFoot(doc);await guardarArchivo(`${nomTipo(tA)} ${a.suc} ${a.fecha}.pdf`,doc,k);if(fallas.length)flash(k,'err','PDF listo, pero no se pudieron incluir '+fallas.length+' foto(s).');
   }catch(e){flash(k,'err','No se pudo generar el PDF: '+e.message)}}
+/* ============ dashboard de Dirección ============ */
+const DSUC=['Centro','Cuauhtémoc','General'];
+function dashRango(){const now=ahora();const k=S.dashP||'semana';const hoy=dia0(now);
+  if(k==='semana'){const a=addD(hoy,-(dow(hoy)-1));return{a,b:addD(a,6),lbl:`Semana del ${fCorta(a)} al ${fCorta(addD(a,6))}`}}
+  if(k==='semana_ant'){const a=addD(hoy,-(dow(hoy)-1)-7);return{a,b:addD(a,6),lbl:`Semana del ${fCorta(a)} al ${fCorta(addD(a,6))}`}}
+  const[y,m]=k.split('-').map(Number);const a=new Date(y,m-1,1);return{a,b:new Date(y,m-1,lastDay(y,m)),lbl:mesLabel(k)}}
+function dashDatos(){const{a,b}=dashRango();const now=ahora();const S0=()=>({tiempo:0,tarde:0,venc:0,pend:0,porVal:0,val:0,cols:{},dias:{},vencL:[],conteos:0,conteoDif:0,cajas:0,cajaNo:0,cajaDif:0,llam:[],metas:0,metasEsp:0});
+  const G={};DSUC.forEach(s=>G[s]=S0());
+  const hoy=iso(now);cfgCols().filter(c=>c.activo!==false).forEach(c=>{instancias(c,a,b).forEach(i=>{const s=(c.puesto==='coord'&&!i.act.cubre&&!i.porSuc)?'General':(i.suc&&G[i.suc]?i.suc:'General');const g=G[s];const r=(S.idx[c.id]||{})[i.key];const h=r&&hecho(r);
+    let st;if(h)st=new Date(r.at)<=i.lim?'tiempo':'tarde';else if(i.lim<now)st='venc';else if(iso(dia0(i.lim))===hoy)st='pend';else return;
+    g[st]++;const gc=g.cols[c.id]=g.cols[c.id]||{tiempo:0,tarde:0,venc:0,pend:0};gc[st]++;
+    if(st!=='pend'){const dk=iso(dia0(i.lim));const gd=g.dias[dk]=g.dias[dk]||{ok:0,n:0};gd.n++;if(st==='tiempo')gd.ok++}
+    if(st==='venc')g.vencL.push({c,i});
+    if(h&&validable(c.id,i.act)){if(S.vidx[c.id+'~'+i.key])g.val++;else g.porVal++}
+    if(i.act.id==='metas_diario'&&st!=='pend'){g.metasEsp++;if(h)g.metas++}
+    if(h){const d=r.datos||{};
+      if(i.act.tipo==='joyeria'||i.act.tipo==='piso'){g.conteos++;if(totConteo(i.act.tipo,d).dif!==0)g.conteoDif++}
+      if(i.act.tipo==='caja'){const T=totCaja(d.rows||[]);g.cajas++;if(T.dif!==0){g.cajaNo++;g.cajaDif+=T.dif}}
+      if(i.act.id==='llamada_vencidos'&&d.pct!=null)g.llam.push(num(d.pct))}})});
+  DSUC.forEach(s=>{const g=G[s];g.base=g.tiempo+g.tarde+g.venc;g.pct=g.base?Math.round(g.tiempo/g.base*100):null;g.hechas=g.tiempo+g.tarde;g.llamProm=g.llam.length?Math.round(g.llam.reduce((x,y)=>x+y,0)/g.llam.length*10)/10:null;
+    g.acc=(S.acc||[]).filter(x=>(x.suc||'')===(s==='General'?'':s)&&x.estado!=='verificada').length;g.vencL.sort((x,y)=>y.i.lim-x.i.lim)});
+  return{G,a,b}}
+function dashChart(G,a,b){const now=ahora();let dias=[];for(let d=new Date(a);d<=b&&d<=now;d=addD(d,1))dias.push(iso(d));const f0=dias.findIndex(k=>G['Centro'].dias[k]||G['Cuauhtémoc'].dias[k]);if(f0>0)dias=dias.slice(f0);if(dias.length<2)return'<p class="note">La gráfica aparece cuando el periodo tiene al menos dos días transcurridos.</p>';
+  const W=720,H=220,L=40,R=140,T=14,B=28,pw=W-L-R,ph=H-T-B;const x=i=>L+(dias.length===1?pw/2:i*pw/(dias.length-1));const y=v=>T+ph-(v/100)*ph;
+  const ser=[['Centro','var(--c1)'],['Cuauhtémoc','var(--c2)']].map(([s,col])=>({s,col,pts:dias.map((k,i)=>{const d=G[s].dias[k];return d&&d.n?{i,k,v:Math.round(d.ok/d.n*100),ok:d.ok,n:d.n}:null})}));
+  const path=pts=>{let o='',up=false;pts.forEach(p=>{if(!p){up=false;return}o+=(up?'L':'M')+x(p.i).toFixed(1)+' '+y(p.v).toFixed(1)+' ';up=true});return o};
+  const grid=[0,25,50,75,100].map(v=>`<line x1="${L}" x2="${L+pw}" y1="${y(v)}" y2="${y(v)}" class="dg"/><text x="${L-6}" y="${y(v)+4}" class="dt" text-anchor="end">${v}%</text>`).join('');
+  const step=Math.ceil(dias.length/10);const xl=dias.map((k,i)=>i%step===0||i===dias.length-1?`<text x="${x(i)}" y="${H-8}" class="dt" text-anchor="middle">${+k.slice(8)}</text>`:'').join('');
+  const ends=ser.map(S2=>{const l=[...S2.pts].reverse().find(Boolean);return l?y(l.v)+4:null});if(ends[0]!=null&&ends[1]!=null&&Math.abs(ends[0]-ends[1])<14){const up=ends[0]<=ends[1]?0:1;ends[up]-=8;ends[1-up]+=8}
+  const lines=ser.map((S2,si)=>{const last=[...S2.pts].reverse().find(Boolean);return`<path d="${path(S2.pts)}" fill="none" stroke="${S2.col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${S2.pts.filter(Boolean).map(p=>`<circle cx="${x(p.i)}" cy="${y(p.v)}" r="4" fill="${S2.col}" stroke="var(--surface)" stroke-width="2"><title>${S2.s} · ${fCorta(D0(p.k))}: ${p.v}% a tiempo (${p.ok} de ${p.n})</title></circle>`).join('')}
+    ${last?`<text x="${x(last.i)+8}" y="${ends[si]}" class="dl">${S2.s} ${last.v}%</text>`:''}`}).join('');
+  return`<div class="dash-leg"><span><i style="background:var(--c1)"></i>Centro</span><span><i style="background:var(--c2)"></i>Cuauhtémoc</span></div>
+  <svg viewBox="0 0 ${W} ${H}" class="dash-svg" role="img" aria-label="Cumplimiento a tiempo por día, Centro y Cuauhtémoc">${grid}${xl}${lines}</svg>`}
+function vDashboard(){if(!S.admin)return'<div class="card"><p class="note">Solo Dirección.</p></div>';
+  const{G,a,b}=dashDatos();const R=dashRango();const P=S.dashP||'semana';
+  const opt=[['semana','Esta semana'],['semana_ant','Semana pasada'],...mesesOpts().map(m=>[m,mesLabel(m)])];
+  const kpi=(l,v,cls,sub)=>`<div class="kpi"><span>${l}</span><b class="${cls||''}">${v}</b>${sub?`<small>${sub}</small>`:''}</div>`;
+  const pc=v=>v==null?'—':v+'%';const cl=v=>v==null?'':v>=90?'good':v>=75?'warn':'bad';
+  const card=s=>{const g=G[s];if(!g.base&&!g.hechas&&!g.pend)return'';const cols=Object.entries(g.cols).map(([id,o])=>({c:colById(id),o,b:o.tiempo+o.tarde+o.venc})).sort((x,y)=>(y.b?y.o.tiempo/y.b:0)-(x.b?x.o.tiempo/x.b:0));
+    return`<div class="card dash-suc"><div class="row"><h3 style="flex:1">${s==='General'?'Coordinación y tareas generales':'Suc. '+esc(s)}</h3><span class="pill ${cl(g.pct)==='good'?'ok':cl(g.pct)==='warn'?'hoy':cl(g.pct)==='bad'?'vencida':''}">${pc(g.pct)} a tiempo</span></div>
+    <div class="kpis">${kpi('Cumplimiento a tiempo',pc(g.pct),cl(g.pct),`${g.tiempo} de ${g.base} vencidas a la fecha`)}${kpi('Entregadas tarde',g.tarde,g.tarde?'warn':'')}${kpi('No realizadas',g.venc,g.venc?'bad':'good')}${kpi('Por validar',g.porVal,g.porVal?'warn':'',`${g.val} validadas`)}</div>
+    ${s!=='General'?`<div class="kpis dash-op">${kpi('Reportes de metas',`${g.metas} de ${g.metasEsp}`)}${kpi('Conteos con diferencia',`${g.conteoDif} de ${g.conteos}`,g.conteoDif?'warn':'')}${kpi('Cuadres que no cuadran',`${g.cajaNo} de ${g.cajas}`,g.cajaNo?'bad':'',g.cajaNo?'Neto '+sm(g.cajaDif):'')}${kpi('Productividad llamadas',g.llamProm==null?'—':g.llamProm+'%','',`${g.llam.length} reportes`)}${kpi('Acciones correctivas abiertas',g.acc,g.acc?'warn':'')}</div>`:''}
+    <div class="tbl"><table><thead><tr><th>Colaborador</th><th class="n">A tiempo</th><th class="n">Tarde</th><th class="n">No realizadas</th><th class="n">Pendientes hoy</th><th class="n">% a tiempo</th></tr></thead><tbody>
+    ${cols.map(x=>{const p=x.b?Math.round(x.o.tiempo/x.b*100):null;return`<tr><td><b>${esc(x.c?nombreCorto(x.c):'')}</b><div class="note">${esc(x.c?(PUESTOS[x.c.puesto]||x.c.puesto):'')}</div></td><td class="n">${x.o.tiempo}</td><td class="n">${x.o.tarde}</td><td class="n">${x.o.venc?`<b style="color:var(--bad)">${x.o.venc}</b>`:0}</td><td class="n">${x.o.pend}</td><td class="n"><b>${pc(p)}</b></td></tr>`}).join('')}</tbody></table></div>
+    ${g.vencL.length?`<details class="cj-det"><summary>Ver no realizadas (${g.vencL.length})</summary><div class="tbl"><table><thead><tr><th>Fecha</th><th>Actividad</th><th>Colaborador</th></tr></thead><tbody>${g.vencL.slice(0,40).map(v=>`<tr class="clk" data-open="${esc(v.c.id+'~'+v.i.key)}" tabindex="0"><td>${fCorta(v.i.lim)}</td><td>${esc(v.i.act.nombre)}</td><td>${esc(nombreCorto(v.c))}</td></tr>`).join('')}</tbody></table></div></details>`:''}</div>`};
+  const tot=DSUC.reduce((o,s)=>{['tiempo','tarde','venc','porVal'].forEach(k=>o[k]+=G[s][k]);return o},{tiempo:0,tarde:0,venc:0,porVal:0});const tb=tot.tiempo+tot.tarde+tot.venc;const tp=tb?Math.round(tot.tiempo/tb*100):null;
+  return`<div class="sec-h"><h2>Dashboard de actividades</h2><span class="note">${esc(R.lbl)} · al ${fCorta(ahora())} ${fHora(ahora())}</span></div>${msgHtml('dash')}
+  <div class="row"><label class="fl" for="dashP" style="flex:0 1 240px">Periodo<select class="sel" id="dashP">${opt.map(([k,l])=>`<option value="${k}" ${k===P?'selected':''}>${esc(l)}</option>`).join('')}</select></label><button class="btn" type="button" id="dashPdf" style="align-self:flex-end">Descargar PDF</button></div>
+  <div class="card"><div class="kpis">${kpi('Cumplimiento general',pc(tp),cl(tp),`${tot.tiempo} de ${tb} a tiempo`)}${kpi('Centro',pc(G['Centro'].pct),cl(G['Centro'].pct))}${kpi('Cuauhtémoc',pc(G['Cuauhtémoc'].pct),cl(G['Cuauhtémoc'].pct))}${kpi('No realizadas',tot.venc,tot.venc?'bad':'good')}${kpi('Por validar',tot.porVal,tot.porVal?'warn':'')}</div>
+   <h3 style="margin-top:14px">Cumplimiento a tiempo por día</h3>${dashChart(G,a,b)}</div>
+  <div class="dash-grid">${DSUC.map(card).join('')}</div>
+  <p class="note">Cumplimiento a tiempo = actividades entregadas antes de su límite ÷ actividades cuyo límite ya pasó. Las pendientes que aún no vencen no cuentan. "General" son las tareas de coordinación que no son de una sucursal.</p>`}
+function bindDashboard(){const ps=$('#dashP');if(ps)ps.onchange=async()=>{S.dashP=ps.value;if(/^\d{4}-\d{2}$/.test(ps.value)&&ps.value<prevMes(mesOf(ahora()))){S.mesSel=ps.value;await cargarTodo()}render()};
+  const pb=$('#dashPdf');if(pb)pb.onclick=()=>pdfDashboard()}
+async function pdfDashboard(){const k='dash';try{const{G}=dashDatos();const R=dashRango();const doc=pdfNew('p');let y=pdfHead(doc,'REPORTE DE ACTIVIDADES POR SUCURSAL',R.lbl);
+  const st={fontSize:9,cellPadding:4,textColor:[22,35,42],lineColor:[215,225,230],lineWidth:0.5};const pc=v=>v==null?'—':v+'%';
+  const sec=t=>{doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(...AZ);doc.text(t,36,y);y+=6};
+  sec('RESUMEN POR SUCURSAL');AT(doc,{startY:y,head:[['Sucursal','A tiempo','Tarde','No realizadas','% a tiempo','Por validar','Validadas']],body:DSUC.filter(s=>G[s].base||G[s].hechas).map(s=>{const g=G[s];return[s==='General'?'Coordinación / general':s,g.tiempo,g.tarde,g.venc,pc(g.pct),g.porVal,g.val]}),styles:st,columnStyles:{1:{halign:'right'},2:{halign:'right'},3:{halign:'right'},4:{halign:'right',fontStyle:'bold'},5:{halign:'right'},6:{halign:'right'}}});y=lastY(doc)+18;
+  sec('INDICADORES DE OPERACIÓN');AT(doc,{startY:y,head:[['Indicador','Centro','Cuauhtémoc']],body:[['Reportes de metas entregados',...['Centro','Cuauhtémoc'].map(s=>`${G[s].metas} de ${G[s].metasEsp}`)],['Conteos con diferencia',...['Centro','Cuauhtémoc'].map(s=>`${G[s].conteoDif} de ${G[s].conteos}`)],['Cuadres que no cuadran',...['Centro','Cuauhtémoc'].map(s=>`${G[s].cajaNo} de ${G[s].cajas}${G[s].cajaNo?' (neto '+sm(G[s].cajaDif)+')':''}`)],['Productividad promedio llamadas',...['Centro','Cuauhtémoc'].map(s=>G[s].llamProm==null?'—':G[s].llamProm+'%')],['Acciones correctivas abiertas',...['Centro','Cuauhtémoc'].map(s=>String(G[s].acc))]],styles:st});y=lastY(doc)+18;
+  DSUC.forEach(s=>{const g=G[s];const cols=Object.entries(g.cols);if(!cols.length)return;if(y>650){doc.addPage();y=60}sec((s==='General'?'COORDINACIÓN / GENERAL':'SUC. '+s.toUpperCase())+' · POR COLABORADOR');
+    AT(doc,{startY:y,head:[['Colaborador','Puesto','A tiempo','Tarde','No realizadas','Pendientes hoy','% a tiempo']],body:cols.map(([id,o])=>{const c=colById(id);const b=o.tiempo+o.tarde+o.venc;return[c?c.nombre:id,c?(PUESTOS[c.puesto]||c.puesto):'',o.tiempo,o.tarde,o.venc,o.pend,pc(b?Math.round(o.tiempo/b*100):null)]}),styles:st,columnStyles:{2:{halign:'right'},3:{halign:'right'},4:{halign:'right'},5:{halign:'right'},6:{halign:'right',fontStyle:'bold'}}});y=lastY(doc)+16;
+    if(g.vencL.length){AT(doc,{startY:y,head:[['No realizadas · fecha','Actividad','Colaborador']],body:g.vencL.slice(0,25).map(v=>[fCorta(v.i.lim),v.i.act.nombre,nombreCorto(v.c)]),styles:Object.assign({},st,{fontSize:8})});y=lastY(doc)+18}});
+  pdfFoot(doc);await guardarArchivo(`Reporte de actividades por sucursal ${iso(ahora())}.pdf`,doc,k)}catch(e){flash(k,'err','No se pudo generar el PDF: '+e.message)}}
 /* ============ rol de trabajo ============ */
 const LUG_ABR={'Centro':'C','Cuauhtémoc':'Q','Descanso':'D','Sin turno':'–'};const LUG_CIC=['','Centro','Cuauhtémoc','Descanso','Sin turno'];
 function rolesDraft(){if(!S.draftRoles)S.draftRoles=JSON.parse(JSON.stringify(S.roles||{patron:{},meses:{}}));S.draftRoles.patron=S.draftRoles.patron||{};S.draftRoles.meses=S.draftRoles.meses||{};return S.draftRoles}
@@ -1182,6 +1258,7 @@ function bindMain(){
   const pm=$('#btnPdfMes');if(pm)pm.onclick=()=>pdfMes(S.mesSel||mesOf(ahora()));
   if(S.tab==='catalogo')bindCatalogo();
   if(S.tab==='roles')bindRoles();
+  if(S.tab==='dash')bindDashboard();
   if(S.tab==='auditorias')bindAuditorias();
   if(S.tab==='usuarios')bindUsuarios();
 }
