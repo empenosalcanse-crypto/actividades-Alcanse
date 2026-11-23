@@ -895,29 +895,130 @@ const DIA_N={DOMINGO:0,LUNES:1,MARTES:2,MIERCOLES:3,JUEVES:4,VIERNES:5,SABADO:6}
 function aliasCols(){const C=colsRol();const cnt={};const tok=c=>{const t=new Set([normTx(c.id),normTx(nombreCorto(c))]);normTx(c.nombre).split(/[ .]+/).filter(x=>x.length>=3).forEach(x=>t.add(x));return[...t]};
   C.forEach(c=>tok(c).forEach(t=>cnt[t]=(cnt[t]||0)+1));const M={};C.forEach(c=>tok(c).forEach(t=>{if(cnt[t]===1)M[t]=c.id}));
   const R=(S.draftRoles||S.roles||{}).alias||{};Object.entries(R).forEach(([k,v])=>M[normTx(k)]=v);return M}
-function parseRolGrid(G){const A=aliasCols();const avisos=[];const asig={};const semanas=[];
+function esTituloRol(t){t=normTx(t);return/TRABAJ|R[O0][LI1][EÉ]?S? ?DE ?TRA/.test(t)&&/\d/.test(t)}
+function parseTitulo(t){t=normTx(t).replace(/[|]/g,' ');const MS=Object.keys(MES_N);
+  let tk=t.split(/[^A-Z0-9]+/).filter(Boolean);const out=[];for(let i=0;i<tk.length;i++){const a=tk[i];if(/^\d+$/.test(a)){out.push({n:+a,s:a});continue}
+    let mb=null;for(const len of [1,2,3]){const cand=tk.slice(i,i+len).join('');if(/\d/.test(cand))break;MS.forEach(m=>{const d=lev(cand,m);if(d<=2&&cand.length>=m.length-2&&(!mb||d<mb.d))mb={m,d,len}})}
+    if(mb){out.push({mes:MES_N[mb.m]});i+=mb.len-1;continue}if(/^A[LI1]$/.test(a)){out.push({al:1});continue}}
+  const yi=out.map(o=>o.s&&o.s.length===4?o.n:null).filter(Boolean);const y=yi.length?yi[yi.length-1]:new Date().getFullYear();
+  const ai=out.findIndex(o=>o.al);const antes=ai>=0?out.slice(0,ai):[],desp=ai>=0?out.slice(ai+1):out;
+  const dIni=[...antes].reverse().find(o=>o.n!=null&&o.n>=1&&o.n<=31&&o.s.length<=2);const mIni=antes.find(o=>o.mes);
+  const dFin=desp.find(o=>o.n!=null&&o.n>=1&&o.n<=31&&o.s.length<=2);const mFin=desp.find(o=>o.mes)||mIni;if(!mFin)return null;
+  let fin=dFin?new Date(y,mFin.mes-1,dFin.n):null;let ini=null;if(dIni){const mi=mIni?mIni.mes:mFin.mes;ini=new Date(mi>mFin.mes?y-1:y,mi-1,dIni.n)}
+  if(fin&&dow(fin)===6&&(!ini||dow(ini)!==7||Math.round((fin-ini)/864e5)!==6))ini=addD(fin,-6);
+  else if(ini&&dow(ini)===7&&(!fin||dow(fin)!==6))fin=addD(ini,6);
+  if(!ini||!fin)return null;return{ini,fin}}
+function parseRolGrid(G,explicito){let sinEtq=0;const A=aliasCols();const avisos=[];const asig={};const semanas=[];
   const set=(id,k,v,dond)=>{asig[id]=asig[id]||{};const prev=asig[id][k];if(prev&&prev!==v&&!(prev==='Descanso'&&v==='Descanso')){if(prev==='Descanso'||v==='Descanso'){avisos.push(`${nombreCorto(colById(id))} el ${fCorta(D0(k))} aparece trabajando y en descanso; se tomó ${v==='Descanso'?'descanso':v}.`)}else avisos.push(`${nombreCorto(colById(id))} el ${fCorta(D0(k))} aparece en ${prev} y en ${v}; se tomó ${v}.`)}asig[id][k]=v};
   const nombres=(txt,dond)=>{const out=[];String(txt).split(/[-,\/&+;]| Y |\n/).map(normTx).filter(Boolean).forEach(p=>{if(/^(DESCANSO|VACACIONES|INCAPACIDAD|FALTA)$/.test(p))return;const id=A[p]||A[p.split(' ')[0]];if(id)out.push(id);else avisos.push(`No reconocí "${p}" (${dond}). Agrégalo como nombre corto del colaborador o corrígelo en el Excel.`)});return out};
-  for(let r=0;r<G.length;r++){const fila=G[r].map(normTx);const t=fila.join(' ');const m=t.match(/ROL(?:ES)? DE TRABAJO DEL (\d{1,2})(?: DE ([A-Z]+))?(?: DE (\d{4}))? AL (\d{1,2}) DE ([A-Z]+)(?: DE)? (\d{4})/);if(!m)continue;
-    const y2=+m[6],m2=MES_N[m[5]],m1=m[2]?MES_N[m[2]]:m2;let y1=m[3]?+m[3]:y2;if(m1>m2)y1=y2-1;const ini=new Date(y1,m1-1,+m[1]);
+  for(let r=0;r<G.length;r++){const fila=G[r].map(normTx);const t=fila.join(' ');if(!esTituloRol(t))continue;const P=parseTitulo(t);const m=[t];if(!P){avisos.push(`No entendí las fechas del título "${t}". Corrígelo en el archivo.`);continue}
+    let ini=P.ini;const fin=P.fin;if(dow(ini)!==7||dow(fin)!==6)avisos.push(`Las fechas de "${t}" no van de domingo a sábado; revisa la vista previa.`);
     let h=-1;for(let k=r+1;k<Math.min(G.length,r+4);k++){if(G[k].map(normTx).filter(x=>DIA_N[x]!=null).length>=5){h=k;break}}if(h<0){avisos.push(`La semana "${m[0]}" no tiene la fila de días (DOMINGO a SÁBADO).`);continue}
     const colD={};G[h].map(normTx).forEach((x,j)=>{if(DIA_N[x]!=null){const off=(DIA_N[x]-dow(ini)%7+7)%7;colD[j]=iso(addD(ini,off))}});
     const fechas=Object.values(colD);semanas.push({ini:iso(ini),fin:fechas.sort().slice(-1)[0],titulo:m[0]});const vistos={};
-    let lbl='';for(let k=h+1;k<G.length;k++){const fk=G[k].map(normTx);if(/ROL(?:ES)? DE TRABAJO DEL/.test(fk.join(' ')))break;
-      const etq=fk.slice(0,Math.min(...Object.keys(colD).map(Number))).filter(Boolean).join(' ');if(etq)lbl=etq;
+    let lbl='';for(let k=h+1;k<G.length;k++){const fk=G[k].map(normTx);if(esTituloRol(fk.join(' ')))break;
+      const etq=fk.slice(0,Math.min(...Object.keys(colD).map(Number))).filter(Boolean).join(' ');if(etq||explicito)lbl=etq;if(explicito&&!etq&&fk.slice(1).some(Boolean)){sinEtq++}
       const tipo=/CUAUHT/.test(lbl)?'Cuauhtémoc':/CENTRO/.test(lbl)?'Centro':/DESCANSO/.test(lbl)?'Descanso':/VACACION|INCAPACIDAD/.test(lbl)?'Descanso':null;if(!tipo)continue;
       Object.entries(colD).forEach(([j,f])=>{const v=G[k][j];if(!normTx(v))return;nombres(v,`${lbl.toLowerCase()} ${fCorta(D0(f))}`).forEach(id=>{set(id,f,tipo);vistos[id+'|'+f]=1})})}
-    colsRol().forEach(c=>fechas.forEach(f=>{if(!vistos[c.id+'|'+f]&&!(asig[c.id]||{})[f])set(c.id,f,'Sin turno')}))}
+    colsRol().forEach(c=>{const nadaS=fechas.every(f=>!vistos[c.id+'|'+f]);fechas.forEach(f=>{if(!vistos[c.id+'|'+f]&&!(asig[c.id]||{})[f])set(c.id,f,'Sin turno')});const trab=fechas.filter(f=>['Centro','Cuauhtémoc'].includes((asig[c.id]||{})[f])).length;if(nadaS)avisos.push(`${nombreCorto(c)} no aparece en la semana del ${fCorta(D0(fechas.slice().sort()[0]))}. Si sí trabajó, revisa el archivo.`);else if(trab<=2&&c.puesto!=='enc')avisos.push(`${nombreCorto(c)} solo aparece trabajando ${trab} día(s) en la semana del ${fCorta(D0(fechas.slice().sort()[0]))}; revisa la vista previa.`)})}
+  if(sinEtq)avisos.push(`${sinEtq} renglón(es) no se pudieron ubicar en una sucursal o en descansos y no se tomaron en cuenta; revisa la vista previa.`);
   if(!semanas.length)avisos.unshift('No encontré ninguna semana con el título "ROLES DE TRABAJO DEL … AL …". Revisa que el archivo tenga ese encabezado.');
   return{asig,avisos,semanas}}
 async function leerRolExcel(f){await cargarXlsx();const buf=await f.arrayBuffer();const wb=XLSX.read(buf,{type:'array',cellDates:true});const out={asig:{},avisos:[],semanas:[]};
   wb.SheetNames.forEach(n=>{const G=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:false,defval:''});const r=parseRolGrid(G);
     Object.entries(r.asig).forEach(([id,m])=>{out.asig[id]=Object.assign(out.asig[id]||{},m)});out.avisos.push(...r.avisos.filter(a=>!/^No encontré/.test(a)||wb.SheetNames.length===1));out.semanas.push(...r.semanas)});
   if(!out.semanas.length&&!out.avisos.length)out.avisos.push('No encontré ninguna semana con el título "ROLES DE TRABAJO DEL … AL …".');return out}
+/* ---- leer rol desde imagen o PDF (OCR en el navegador) ---- */
+const TES_JS='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+const TES_OPT={workerPath:'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',corePath:'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1',langPath:'https://cdn.jsdelivr.net/npm/@tesseract.js-data/spa/4.0.0_best_int',gzip:true};
+const PDFJS='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',PDFJS_W='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+function cargarScript(url,glob){if(window[glob])return Promise.resolve();return new Promise((ok,ko)=>{const s=document.createElement('script');s.src=url;s.onload=()=>ok();s.onerror=()=>ko(new Error('No se pudo cargar el lector. Revisa tu internet.'));document.head.appendChild(s)})}
+async function imgACanvas(f){const u=URL.createObjectURL(f);try{const im=await new Promise((ok,ko)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=()=>ko(new Error('No se pudo abrir la imagen (usa JPG o PNG).'));i.src=u});
+  const sc=Math.min(1,3200/Math.max(im.naturalWidth,im.naturalHeight));const c=document.createElement('canvas');c.width=Math.round(im.naturalWidth*sc);c.height=Math.round(im.naturalHeight*sc);const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);g.drawImage(im,0,0,c.width,c.height);return[c]}finally{URL.revokeObjectURL(u)}}
+async function pdfACanvas(f){await cargarScript(PDFJS,'pdfjsLib');pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS_W;const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise;const out=[];
+  for(let n=1;n<=Math.min(pdf.numPages,6);n++){const pg=await pdf.getPage(n);const v0=pg.getViewport({scale:1});const alts=[];
+    // recorta al área con contenido (el rol suele ocupar solo parte de la hoja)
+    let bx=0,by=0,bw=v0.width,bh=v0.height;{const s0=Math.min(2,800/Math.max(v0.width,v0.height));const v=pg.getViewport({scale:s0});const c=document.createElement('canvas');c.width=Math.ceil(v.width);c.height=Math.ceil(v.height);const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);await pg.render({canvasContext:g,viewport:v}).promise;
+      const d=g.getImageData(0,0,c.width,c.height).data;let x0=1e9,y0=1e9,x1=-1,y1=-1;for(let y=0;y<c.height;y++)for(let x=0;x<c.width;x++){const i=(y*c.width+x)*4;if(Math.min(d[i],d[i+1],d[i+2])<235){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}}
+      if(x1>x0&&y1>y0){const m=6;bx=Math.max(0,(x0-m)/s0);by=Math.max(0,(y0-m)/s0);bw=Math.min(v0.width-bx,(x1-x0+2*m)/s0);bh=Math.min(v0.height-by,(y1-y0+2*m)/s0)}}
+    for(const T of [1600,2000]){const sc=Math.min(6,T/Math.max(bw,bh));const v=pg.getViewport({scale:sc,offsetX:-bx*sc,offsetY:-by*sc});v.width=bw*sc;v.height=bh*sc;const c=document.createElement('canvas');c.width=Math.round(v.width);c.height=Math.round(v.height);const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);await pg.render({canvasContext:g,viewport:v}).promise;
+      try{const tc=await pg.getTextContent();c._txt=tc.items.filter(i=>i.str&&i.str.trim()).map(i=>{const h=Math.abs(i.transform[3])||i.height||8;const[x0,y0]=v.convertToViewportPoint(i.transform[4],i.transform[5]+h*0.35);const[x1]=v.convertToViewportPoint(i.transform[4]+(i.width||0),i.transform[5]);return{s:i.str.trim(),x:(x0+x1)/2,y:y0,x0:Math.min(x0,x1)}});if(c._txt.length<10)c._txt=null}catch(e){c._txt=null}
+      alts.push(c)}
+    out.push(alts)}return out}
+/* Detecta las líneas de la cuadrícula, limpia cada celda (texto negro sobre blanco) y devuelve celdas */
+function rejilla(c){const W=c.width,H=c.height;const bordes=!!c._txt;/* en PDF con texto (render limpio) también cuenta cambios de color de fondo como borde */const px=c.getContext('2d').getImageData(0,0,W,H).data;
+  const gris=i=>{const mx=Math.max(px[i],px[i+1],px[i+2]),mn=Math.min(px[i],px[i+1],px[i+2]);return mx<150&&mx-mn<60};const negro=i=>Math.max(px[i],px[i+1],px[i+2])<70;
+  const L=new Float32Array(W*H);for(let k=0;k<W*H;k++)L[k]=0.299*px[k*4]+0.587*px[k*4+1]+0.114*px[k*4+2];
+  const runs=(arr,max)=>{const out=[];let s=-1;for(let i=0;i<=arr.length;i++){const v=i<arr.length&&arr[i];if(v&&s<0)s=i;if(!v&&s>=0){if(i-s<=max)out.push([s,i-1]);s=-1}}return out};
+  const colF=new Array(W).fill(0),rowF=new Array(H).fill(0),rowN=new Array(H).fill(0);
+  const q=Math.max(2,Math.round(Math.max(W,H)/750));
+  for(let y=q;y<H-q;y++)for(let x=q;x<W-q;x++){const k=y*W+x;const v=L[k];if(v<Math.min(L[k-q*W],L[k+q*W])-25)rowF[y]++;else if(bordes&&y>=2*q&&y<H-2*q){const a=(k-q*W)*4,b2=(k+q*W)*4,a2=(k-2*q*W)*4,b3=(k+2*q*W)*4;const df=(i,j)=>Math.abs(px[i]-px[j])+Math.abs(px[i+1]-px[j+1])+Math.abs(px[i+2]-px[j+2]);if(df(a,a2)<20&&df(b2,b3)<20&&(df(a,b2)>120||v>Math.max(L[k-q*W],L[k+q*W])+40&&df(a,b2)<30))rowF[y]++}if(v<Math.min(L[k-q],L[k+q])-25)colF[x]++;if(negro(k*4))rowN[y]++}
+  const vl=runs(colF.map(v=>v>H*0.3),2*q+2).map(r=>(r[0]+r[1])/2);
+  const lin=rowF.map(v=>v>W*0.4);const sep=rowN.map(v=>v>W*0.75);
+  const hlThin=runs(lin,2*q+2);const hlSep=runs(sep,H);const hl=[...hlThin,...hlSep].sort((a,b)=>a[0]-b[0]);
+  const hm=[];hl.forEach(r=>{const l=hm[hm.length-1];if(l&&r[0]<=l[1]+2)l[1]=Math.max(l[1],r[1]);else hm.push([r[0],r[1]])});
+  const cols=[];for(let i=0;i<vl.length-1;i++)if(vl[i+1]-vl[i]>W/80)cols.push([vl[i],vl[i+1]]);
+  const rows=[],gaps=[];for(let i=0;i<hm.length-1;i++){const a=hm[i][1]+1,b=hm[i+1][0]-1;if(b-a>Math.max(8,H/150)){rows.push([a,b]);gaps.push([hm[i][0],hm[i][1]])}}
+  const med=(x0,x1,y0,y1)=>{const r=[],g=[],b=[];for(let y=Math.ceil(y0)+3;y<=y1-3;y+=2)for(let x=Math.ceil(x0)+3;x<=x1-3;x+=3){const i=(y*W+x)*4;r.push(px[i]);g.push(px[i+1]);b.push(px[i+2])}const m=a=>a.length?a.sort((p,q)=>p-q)[a.length>>1]:255;return[m(r),m(g),m(b)]};
+  const fondo=rows.map(([a,b])=>cols.map(([x0,x1])=>med(x0,x1,a,b)));
+  const linea=gaps.map(([g0,g1],ri)=>cols.map(([a,b],ci)=>{if(ri>0){const p=fondo[ri-1][ci],q=fondo[ri][ci];if(Math.abs(p[0]-q[0])+Math.abs(p[1]-q[1])+Math.abs(p[2]-q[2])>90)return true}const xa=Math.ceil(a)+3,xb=Math.floor(b)-3;if(xb<=xa)return true;for(let y=Math.max(0,g0-1);y<=Math.min(H-1,g1+1);y++){let n=0;for(let x=xa;x<=xb;x++){const k=y*W+x;if(y>=q&&y<H-q&&L[k]<Math.min(L[k-q*W],L[k+q*W])-25||negro(k*4))n++}if(n>(xb-xa)*0.6)return true}return false}));
+  return{cols,rows,linea,fondo,px,W,H}}
+function limpiarCelda(R,x0,x1,y0,y1,dst){const{px,W}=R;const pad=3;x0=Math.ceil(x0)+pad;x1=Math.floor(x1)-pad;y0=Math.ceil(y0)+pad;y1=Math.floor(y1)-pad;if(x1<=x0||y1<=y0)return 0;
+  const rs=[],gs=[],bs=[];for(let y=y0;y<=y1;y+=2)for(let x=x0;x<=x1;x+=2){const i=(y*W+x)*4;rs.push(px[i]);gs.push(px[i+1]);bs.push(px[i+2])}const med=a=>a.sort((p,q)=>p-q)[a.length>>1];const br=med(rs),bg=med(gs),bb=med(bs);
+  const D=[];for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){const i=(y*W+x)*4;D.push(Math.abs(px[i]-br)+Math.abs(px[i+1]-bg)+Math.abs(px[i+2]-bb))}
+  const hi=D.filter(v=>v>120);if(hi.length<12)return 0;const mx=hi.sort((a,b)=>a-b)[Math.floor(hi.length*0.9)];const th=Math.max(90,mx*0.45);
+  const d=dst.data,DW=dst.width;let n=0,k=0;for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){if(D[k++]>th){const j=(y*DW+x)*4;d[j]=d[j+1]=d[j+2]=0;n++}}return n}
+function lev(a,b){const m=a.length,n=b.length;if(!m)return n;if(!n)return m;let p=Array.from({length:n+1},(_,j)=>j);for(let i=1;i<=m;i++){const c=[i];for(let j=1;j<=n;j++)c[j]=Math.min(p[j]+1,c[j-1]+1,p[j-1]+(a[i-1]===b[j-1]?0:1));p=c}return p[n]}
+function corregirTok(t,voc){t=normTx(t).replace(/0/g,'O').replace(/1/g,'I').replace(/5/g,'S').replace(/[^A-ZÑ]/g,'');if(t.length<2)return'';if(voc.includes(t))return t;let best='',bd=9,bd2=9;voc.forEach(v=>{const d=lev(t,v);if(d<bd){bd2=bd;bd=d;best=v}else if(d<bd2)bd2=d});const lim=best.length<=3?1:best.length<=6?2:3;return bd<=lim&&bd2>bd&&t.length>=best.length-2?best:''}
+function leerCeldaTx(t,voc){const sin=normTx(t).replace(/[^A-ZÑ0-9]/g,'');const todo=corregirTok(sin,voc);if(todo)return todo;return t.split(/[-\s]+/).map(x=>corregirTok(x,voc)).filter(Boolean).join('-')}
+async function ocrRejilla(canvases,prog){let w=null;let TXT=null;
+  const worker=async()=>{if(!w){await cargarScript(TES_JS,'Tesseract');w=await Tesseract.createWorker('spa',1,TES_OPT)}return w};
+  const A=aliasCols();const VOC=[...new Set([...Object.keys(A),...Object.keys(DIA_N),'DESCANSO','DESCANSOS','VACACIONES','CENTRO','CUAUHTEMOC','INCAPACIDAD'])].filter(v=>v.length>=3);
+  const G=[];const info=[];let porColor=0;
+  const ocr=async(cv,x0,y0,x1,y1,digits)=>{
+    if(TXT){const L=TXT.filter(t=>t.x>=x0&&t.x<=x1&&t.y>=y0&&t.y<=y1).sort((a,b)=>Math.abs(a.y-b.y)>6?a.y-b.y:a.x0-b.x0);return L.map(t=>t.s).join(' ').replace(/\s+/g,' ').trim().toUpperCase()}
+    x0=Math.max(0,Math.floor(x0));y0=Math.max(0,Math.floor(y0));x1=Math.min(cv.width-1,Math.ceil(x1));y1=Math.min(cv.height-1,Math.ceil(y1));
+    {const id=cv.getContext('2d').getImageData(x0,y0,x1-x0+1,y1-y0+1);const dw=id.width;let bx0=1e9,by0=1e9,bx1=-1,by1=-1;for(let y=0;y<id.height;y++)for(let x=0;x<dw;x++){if(id.data[(y*dw+x)*4]<128){if(x<bx0)bx0=x;if(x>bx1)bx1=x;if(y<by0)by0=y;if(y>by1)by1=y}}
+     if(bx1<0)return'';x1=x0+bx1;y1=y0+by1;x0=x0+bx0;y0=y0+by0}
+    const pad=8;const ww=Math.round(x1-x0)+pad*2,hh=Math.round(y1-y0)+pad*2;if(ww<8||hh<8)return'';const sc=Math.max(1,Math.min(5,90/hh));
+    const c=document.createElement('canvas');c.width=Math.round(ww*sc);c.height=Math.round(hh*sc);const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);g.imageSmoothingEnabled=true;g.drawImage(cv,x0-pad,y0-pad,ww,hh,0,0,c.width,c.height);
+    await(await worker()).setParameters({tessedit_pageseg_mode:'7',tessedit_char_whitelist:digits?'ABCDEFGHIJKLMNÑOPQRSTUVWXYZÁÉÍÓÚ0123456789 ':'ABCDEFGHIJKLMNÑOPQRSTUVWXYZÁÉÍÓÚ -'});
+    const{data}=await(await worker()).recognize(c);return String(data.text||'').replace(/\s+/g,' ').trim()};
+  const pagina=async(c,pi,G)=>{TXT=c._txt||null;const R=rejilla(c);info.push(`${R.cols.length}x${R.rows.length}`);if(R.cols.length<6||R.rows.length<4)return;
+    const cl=document.createElement('canvas');cl.width=R.W;cl.height=R.H;const g=cl.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,R.W,R.H);const dst=g.getImageData(0,0,R.W,R.H);
+    const tinta=R.rows.map(([a,b])=>R.cols.map(([x0,x1])=>limpiarCelda(R,x0,x1,a,b,dst)));g.putImageData(dst,0,0);
+    let fd=-1;const total=R.rows.length;const cache={},blq={};const pend=[];
+    const celda=async(k,j)=>{const key=k+'_'+j;if(cache[key]!=null)return cache[key];if(tinta[k][j]<=15)return cache[key]='';const t=await ocr(cl,R.cols[j][0],R.rows[k][0],R.cols[j][1],R.rows[k][1],false);return cache[key]=leerCeldaTx(t,VOC)};
+    for(let r=0;r<total;r++){prog&&prog(`Leyendo renglón ${r+1} de ${total}${canvases.length>1?` (página ${pi+1})`:''}…`);const[a,b]=R.rows[r];const nT=tinta[r].filter(n=>n>15).length;
+      const esUlt=r+1<total&&tinta[r+1].filter(n=>n>15).length>=6;if(nT>=1&&(fd<0||nT<=4||esUlt)){const t=await ocr(cl,R.cols[0][0],a,R.cols[R.cols.length-1][1],b,true);if(esTituloRol(t)||/R[O0]L.{0,3}DE.{0,3}TRA/.test(normTx(t))){G.push([t]);fd=-1;continue}}
+      const cells=[];for(let j=0;j<R.cols.length;j++)cells.push(await celda(r,j));
+      const dias=cells.map((x,j)=>DIA_N[x]!=null?j:-1).filter(j=>j>=0);
+      if(dias.length>=5){const ORD=['DOMINGO','LUNES','MARTES','MIERCOLES','JUEVES','VIERNES','SABADO'];const j0=dias[0];fd=j0-ORD.indexOf(cells[j0]);if(fd<1)fd=Math.min(...dias);G.push(['',...cells.slice(fd).map((x,k)=>x||ORD[k]||'')]);continue}
+      if(fd<0)continue;const lc=fd-1;const propia=async k=>{const ps=[];for(let j=0;j<fd;j++){const t=await celda(k,j);if(t)ps.push(t)}return ps.join(' ')};const unica=t=>/DESCANSO|VACACION|INCAPACIDAD/.test(t);
+      const pr=await propia(r);if(pr&&unica(pr)){const fila=[pr,...cells.slice(fd)];G.push(fila);continue}
+      let r0=r;while(r0>0&&R.linea[r0]&&!R.linea[r0][lc]&&!unica(await propia(r0-1)))r0--;let r1=r;while(r1+1<total&&R.linea[r1+1]&&!R.linea[r1+1][lc]&&!unica(await propia(r1+1)))r1++;
+      const bk=r0+'-'+r1;let etq=blq[bk];if(etq==null){const parts=[];for(let j=0;j<fd;j++){if(r0===r1){const t=await celda(r0,j);if(t)parts.push(t);continue}
+          const cc=document.createElement('canvas');cc.width=R.W;cc.height=R.H;const g2=cc.getContext('2d');g2.fillStyle='#fff';g2.fillRect(0,0,R.W,R.H);const d2=g2.getImageData(0,0,R.W,R.H);
+          if(limpiarCelda(R,R.cols[j][0],R.cols[j][1],R.rows[r0][0],R.rows[r1][1],d2)>15){g2.putImageData(d2,0,0);const t=await ocr(cc,R.cols[j][0],R.rows[r0][0],R.cols[j][1],R.rows[r1][1],false);const ct=t.split(/[-\s]+/).map(x=>corregirTok(x,VOC)).filter(Boolean).join(' ');if(ct)parts.push(ct)}}
+        etq=blq[bk]=parts.join(' ')}
+      const fila=[etq,...cells.slice(fd)];G.push(fila);pend.push({fila,r,fd})}
+    // relleno por color: cada quien suele tener su color de celda en el rol
+    const colorDe={};pend.forEach(({fila,r,fd})=>fila.slice(1).forEach((t,k)=>{const f=R.fondo[r][k+fd];const sat=Math.max(...f)-Math.min(...f);if(t&&A[t]&&sat>40){const key=f.map(v=>Math.round(v/24)).join(',');colorDe[key]=colorDe[key]||{};colorDe[key][t]=(colorDe[key][t]||0)+1}}));
+    pend.forEach(({fila,r,fd})=>{if(!/CENTRO|CUAUHT/.test(normTx(fila[0])))return;fila.slice(1).forEach((t,k)=>{if(t||tinta[r][k+fd]<=15)return;const f=R.fondo[r][k+fd];const sat=Math.max(...f)-Math.min(...f);if(sat<=40)return;const key=f.map(v=>Math.round(v/24)).join(',');const m=colorDe[key];if(!m)return;const L=Object.entries(m).sort((a,b)=>b[1]-a[1]);if(L.length===1||L[0][1]>=2*L[1][1]){fila[k+1]=L[0][0];porColor++}})})};
+  const puntaje=Gp=>{let n=0;Gp.forEach(f=>{if(f.length===1&&esTituloRol(f[0]))n+=20;else f.slice(1).forEach(t=>{if(t)n++})});return n};
+  try{for(const [pi,pg] of canvases.entries()){const alts=Array.isArray(pg)?pg:[pg];let mejor=null;
+      for(const [ai,c] of alts.entries()){prog&&prog(`Leyendo página ${pi+1} de ${canvases.length}${alts.length>1?` (pasada ${ai+1} de ${alts.length})`:''}…`);const Gp=[];await pagina(c,pi,Gp);const sc=puntaje(Gp);if(!mejor||sc>mejor.sc)mejor={sc,Gp}}
+      if(mejor)G.push(...mejor.Gp)}}
+  finally{if(w)await w.terminate()}return{G,info,porColor}}
+async function leerRolArchivo(f,prog){const n=f.name.toLowerCase();const t=f.type||'';
+  if(/\.(xlsx|xls|ods|csv)$/.test(n)||/sheet|excel|csv/.test(t))return Object.assign(await leerRolExcel(f),{origen:'excel'});
+  let cv;if(/pdf/.test(t)||/\.pdf$/.test(n)){prog&&prog('Abriendo el PDF…');cv=await pdfACanvas(f)}else if(/^image\//.test(t)||/\.(jpe?g|png|webp)$/.test(n)){cv=await imgACanvas(f)}else throw new Error('Formato no reconocido. Usa Excel, PDF o imagen (JPG o PNG).');
+  prog&&prog('Leyendo el rol de la imagen… puede tardar unos segundos.');const{G}=await ocrRejilla(cv,prog);const r=parseRolGrid(G,true);
+  const txt=Array.isArray(cv)&&cv.every(p=>(Array.isArray(p)?p[0]:p)._txt);r.origen=txt?'pdf':'imagen';if(r.semanas.length&&!txt)r.avisos.unshift('Se leyó de una imagen o PDF escaneado: revisa bien la vista previa antes de aplicar.');return r}
 function vRolImport(){const I=S.rolImp;
-  return`<div class="card"><div class="row"><h3 style="flex:1">Subir rol desde Excel</h3><button class="btn" type="button" id="rolXlsB">📄 Elegir archivo de Excel</button></div>
-  <p class="note">Sube el Excel de roles con el formato de siempre: título "ROLES DE TRABAJO DEL … AL …", fila de días (DOMINGO a SÁBADO), bloques CENTRO y CUAUHTÉMOC con los nombres, y fila DESCANSOS. Puede traer varias semanas en la misma hoja. Quien no aparezca un día queda "sin turno". Revisa la vista previa antes de aplicar.</p>
-  <input id="rolXls" class="vh" type="file" accept=".xlsx,.xls,.ods,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
+  return`<div class="card"><div class="row"><h3 style="flex:1">Subir rol (Excel, PDF o imagen)</h3><button class="btn" type="button" id="rolXlsB">📄 Elegir archivo</button></div>
+  <p class="note">Sube el rol en Excel, en PDF o como foto o captura (JPG o PNG), con el formato de siempre: título "ROLES DE TRABAJO DEL … AL …", fila de días (DOMINGO a SÁBADO), bloques CENTRO y CUAUHTÉMOC con los nombres, y fila DESCANSOS. Puede traer varias semanas en la misma hoja. Quien no aparezca un día queda "sin turno". Revisa la vista previa antes de aplicar.</p>
+  <input id="rolXls" class="vh" type="file" accept=".xlsx,.xls,.ods,.csv,.pdf,image/*,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"><p class="note">Excel o PDF guardado desde Excel se leen exactos. Con foto, PDF escaneado o captura, el sistema lee el texto de la imagen: usa una captura nítida, completa y derecha, y revisa bien la vista previa.</p>
   ${I?(()=>{const F=[...new Set(Object.values(I.asig).flatMap(m=>Object.keys(m)))].sort();const C=colsRol().filter(c=>I.asig[c.id]);const dl=['','L','M','M','J','V','S','D'];
     return`<div class="alerta" role="note"><b>${esc(I.nombre)}</b><span>${I.semanas.length} semana(s): ${I.semanas.map(s=>`${fCorta(D0(s.ini))} al ${fCorta(D0(s.fin))}`).join(' · ')}</span></div>
     ${I.avisos.length?`<div class="msg err" role="alert"><b>Revisa:</b><ul>${I.avisos.slice(0,12).map(a=>`<li>${esc(a)}</li>`).join('')}</ul></div>`:''}
@@ -925,7 +1026,7 @@ function vRolImport(){const I=S.rolImp;
     ${C.map(c=>`<tr><td><b>${esc(nombreCorto(c))}</b></td>${F.map(k=>{const v=(I.asig[c.id]||{})[k]||'';return`<td><span class="rc ${v==='Descanso'?'des':v==='Centro'?'cen':v==='Cuauhtémoc'?'cua':v==='Sin turno'?'st':''}">${LUG_ABR[v]||'·'}</span></td>`}).join('')}</tr>`).join('')}</tbody></table></div>
     <div class="row"><button class="btn pri" type="button" id="rolImpOk">Aplicar al rol y guardar</button><button class="btn" type="button" id="rolImpNo">Descartar</button></div>`:''}`})():''}</div>`}
 function bindRolImport(){const R=rolesDraft();const b=$('#rolXlsB'),fi=$('#rolXls');if(b&&fi){b.onclick=()=>fi.click();fi.onchange=async()=>{const f=fi.files[0];fi.value='';if(!f)return;flash('rol','ok','Leyendo el archivo…');
-    try{const r=await leerRolExcel(f);S.rolImp=Object.assign(r,{nombre:f.name});flash('rol',r.semanas.length?'ok':'err',r.semanas.length?'Archivo leído. Revisa la vista previa y toca "Aplicar al rol y guardar".':'No se pudo leer el rol de este archivo.')}catch(e){flash('rol','err','No se pudo leer el archivo: '+e.message)}render()}}
+    try{const r=await leerRolArchivo(f,m=>flash('rol','ok',m));S.rolImp=Object.assign(r,{nombre:f.name});flash('rol',r.semanas.length?'ok':'err',r.semanas.length?'Archivo leído. Revisa la vista previa y toca "Aplicar al rol y guardar".':'No se pudo leer el rol de este archivo.')}catch(e){flash('rol','err','No se pudo leer el archivo: '+e.message)}render()}}
   const no=$('#rolImpNo');if(no)no.onclick=()=>{S.rolImp=null;render()};
   const ok=$('#rolImpOk');if(ok)ok.onclick=async()=>{const I=S.rolImp;Object.entries(I.asig).forEach(([id,m])=>Object.entries(m).forEach(([k,v])=>{const mes=k.slice(0,7);R.meses[mes]=R.meses[mes]||{};R.meses[mes][id]=R.meses[mes][id]||{};R.meses[mes][id][k]=v}));
     ok.disabled=true;const{error}=await S.sb.from('config').upsert({id:'roles',data:R,actualizado:ahora().toISOString()});ok.disabled=false;
