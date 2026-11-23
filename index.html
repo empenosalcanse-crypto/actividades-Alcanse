@@ -903,7 +903,7 @@ function esTituloRol(t){t=normTx(t);return/TRABAJ|R[O0][LI1][EÉ]?S? ?DE ?TRA/.t
 function parseTitulo(t){t=normTx(t).replace(/[|]/g,' ');const MS=Object.keys(MES_N);
   let tk=t.split(/[^A-Z0-9]+/).filter(Boolean);const out=[];for(let i=0;i<tk.length;i++){const a=tk[i];if(/^\d+$/.test(a)){out.push({n:+a,s:a});continue}
     let mb=null;for(const len of [1,2,3]){const cand=tk.slice(i,i+len).join('');if(/\d/.test(cand))break;MS.forEach(m=>{const d=lev(cand,m);if(d<=2&&cand.length>=m.length-2&&(!mb||d<mb.d))mb={m,d,len}})}
-    if(mb){out.push({mes:MES_N[mb.m]});i+=mb.len-1;continue}if(/^A[LI1]$/.test(a)){out.push({al:1});continue}}
+    if(mb){out.push({mes:MES_N[mb.m]});i+=mb.len-1;continue}if(/^(A|A[LI1]|HASTA)$/.test(a)){out.push({al:1});continue}}
   const yi=out.map(o=>o.s&&o.s.length===4?o.n:null).filter(Boolean);const y=yi.length?yi[yi.length-1]:new Date().getFullYear();
   const ai=out.findIndex(o=>o.al);const antes=ai>=0?out.slice(0,ai):[],desp=ai>=0?out.slice(ai+1):out;
   const dIni=[...antes].reverse().find(o=>o.n!=null&&o.n>=1&&o.n<=31&&o.s.length<=2);const mIni=antes.find(o=>o.mes);
@@ -914,7 +914,7 @@ function parseTitulo(t){t=normTx(t).replace(/[|]/g,' ');const MS=Object.keys(MES
   if(!ini||!fin)return null;return{ini,fin}}
 function parseRolGrid(G,explicito){let sinEtq=0;const A=aliasCols();const avisos=[];const asig={};const semanas=[];
   const set=(id,k,v,dond)=>{asig[id]=asig[id]||{};const prev=asig[id][k];if(prev&&prev!==v&&!(prev==='Descanso'&&v==='Descanso')){if(prev==='Descanso'||v==='Descanso'){avisos.push(`${nombreCorto(colById(id))} el ${fCorta(D0(k))} aparece trabajando y en descanso; se tomó ${v==='Descanso'?'descanso':v}.`)}else avisos.push(`${nombreCorto(colById(id))} el ${fCorta(D0(k))} aparece en ${prev} y en ${v}; se tomó ${v}.`)}asig[id][k]=v};
-  const nombres=(txt,dond)=>{const out=[];String(txt).split(/[-,\/&+;]| Y |\n/).map(normTx).filter(Boolean).forEach(p=>{if(/^(DESCANSO|VACACIONES|INCAPACIDAD|FALTA)$/.test(p))return;const id=A[p]||A[p.split(' ')[0]];if(id)out.push(id);else avisos.push(`No reconocí "${p}" (${dond}). Agrégalo como nombre corto del colaborador o corrígelo en el Excel.`)});return out};
+  const nombres=(txt,dond)=>{const out=[];String(txt).split(/[-,\/&+;]| Y |\n/).map(normTx).filter(Boolean).forEach(p=>{if(/^(DESCANSO|VACACION(ES)?|INCAPACIDAD|FALTA|INH[AÁ]BIL|D[IÍ]A INH[AÁ]BIL|FESTIVO)$/.test(p))return;const id=A[p]||A[p.split(' ')[0]];if(id)out.push(id);else avisos.push(`No reconocí "${p}" (${dond}). Agrégalo como nombre corto del colaborador o corrígelo en el Excel.`)});return out};
   for(let r=0;r<G.length;r++){const fila=G[r].map(normTx);const t=fila.join(' ');if(!esTituloRol(t))continue;const P=parseTitulo(t);const m=[t];if(!P){avisos.push(`No entendí las fechas del título "${t}". Corrígelo en el archivo.`);continue}
     let ini=P.ini;const fin=P.fin;if(dow(ini)!==7||dow(fin)!==6)avisos.push(`Las fechas de "${t}" no van de domingo a sábado; revisa la vista previa.`);
     let h=-1;for(let k=r+1;k<Math.min(G.length,r+4);k++){if(G[k].map(normTx).filter(x=>DIA_N[x]!=null).length>=5){h=k;break}}if(h<0){avisos.push(`La semana "${m[0]}" no tiene la fila de días (DOMINGO a SÁBADO).`);continue}
@@ -963,6 +963,12 @@ function rejilla(c){const W=c.width,H=c.height;const bordes=!!c._txt;/* en PDF c
   const hm=[];hl.forEach(r=>{const l=hm[hm.length-1];if(l&&r[0]<=l[1]+2)l[1]=Math.max(l[1],r[1]);else hm.push([r[0],r[1]])});
   const cols=[];for(let i=0;i<vl.length-1;i++)if(vl[i+1]-vl[i]>W/80)cols.push([vl[i],vl[i+1]]);
   const rows=[],gaps=[];for(let i=0;i<hm.length-1;i++){const a=hm[i][1]+1,b=hm[i+1][0]-1;if(b-a>Math.max(8,H/150)){rows.push([a,b]);gaps.push([hm[i][0],hm[i][1]])}}
+  /* renglones el doble de altos: dos renglones sin línea entre ellos (solo cambia el color de fondo); se parten donde cambia el color */
+  if(rows.length>3&&cols.length){const hs=rows.map(([a,b])=>b-a+1).sort((x,y)=>x-y);const mh=hs[hs.length>>1];const xa=Math.ceil(cols[0][0])+2,xb=Math.floor(cols[cols.length-1][1])-2;
+    const df=(i,j)=>Math.abs(px[i]-px[j])+Math.abs(px[i+1]-px[j+1])+Math.abs(px[i+2]-px[j+2]);
+    for(let i=rows.length-1;i>=0;i--){const[a,b]=rows[i];const h=b-a+1;if(h<=1.75*mh)continue;let best=-1,by=-1;
+      for(let y=Math.round(a+0.3*h);y<=Math.round(b-0.3*h);y++){if(y-2*q<0||y+2*q>=H)continue;let n=0,t=0;for(let x=xa;x<=xb;x+=2){t++;const k=y*W+x;const u=(k-q*W)*4,d=(k+q*W)*4,u2=(k-2*q*W)*4,d2=(k+2*q*W)*4;if(df(u,u2)<30&&df(d,d2)<30&&df(u,d)>90)n++}const sc=n/Math.max(1,t);if(sc>best){best=sc;by=y}}
+      if(best>0.25){rows.splice(i,1,[a,by-1],[by+1,b]);gaps.splice(i+1,0,[by,by])}}}
   const med=(x0,x1,y0,y1)=>{const r=[],g=[],b=[];for(let y=Math.ceil(y0)+3;y<=y1-3;y+=2)for(let x=Math.ceil(x0)+3;x<=x1-3;x+=3){const i=(y*W+x)*4;r.push(px[i]);g.push(px[i+1]);b.push(px[i+2])}const m=a=>a.length?a.sort((p,q)=>p-q)[a.length>>1]:255;return[m(r),m(g),m(b)]};
   const fondo=rows.map(([a,b])=>cols.map(([x0,x1])=>med(x0,x1,a,b)));
   const linea=gaps.map(([g0,g1],ri)=>cols.map(([a,b],ci)=>{if(ri>0){const p=fondo[ri-1][ci],q=fondo[ri][ci];if(Math.abs(p[0]-q[0])+Math.abs(p[1]-q[1])+Math.abs(p[2]-q[2])>90)return true}const xa=Math.ceil(a)+3,xb=Math.floor(b)-3;if(xb<=xa)return true;for(let y=Math.max(0,g0-1);y<=Math.min(H-1,g1+1);y++){let n=0;for(let x=xa;x<=xb;x++){const k=y*W+x;if(y>=q&&y<H-q&&L[k]<Math.min(L[k-q*W],L[k+q*W])-25||negro(k*4))n++}if(n>(xb-xa)*0.6)return true}return false}));
@@ -977,7 +983,7 @@ function corregirTok(t,voc){t=normTx(t).replace(/0/g,'O').replace(/1/g,'I').repl
 function leerCeldaTx(t,voc){const sin=normTx(t).replace(/[^A-ZÑ0-9]/g,'');const todo=corregirTok(sin,voc);if(todo)return todo;return t.split(/[-\s]+/).map(x=>corregirTok(x,voc)).filter(Boolean).join('-')}
 async function ocrRejilla(canvases,prog){let w=null;let TXT=null;
   const worker=async()=>{if(!w){await cargarScript(TES_JS,'Tesseract');w=await Tesseract.createWorker('spa',1,TES_OPT)}return w};
-  const A=aliasCols();const VOC=[...new Set([...Object.keys(A),...Object.keys(DIA_N),'DESCANSO','DESCANSOS','VACACIONES','CENTRO','CUAUHTEMOC','INCAPACIDAD'])].filter(v=>v.length>=3);
+  const A=aliasCols();const VOC=[...new Set([...Object.keys(A),...Object.keys(DIA_N),'DESCANSO','DESCANSOS','VACACIONES','CENTRO','CUAUHTEMOC','INCAPACIDAD','INHABIL','FESTIVO'])].filter(v=>v.length>=3);
   const G=[];const info=[];let porColor=0;
   const ocr=async(cv,x0,y0,x1,y1,digits)=>{
     if(TXT){const L=TXT.filter(t=>t.x>=x0&&t.x<=x1&&t.y>=y0&&t.y<=y1).sort((a,b)=>Math.abs(a.y-b.y)>6?a.y-b.y:a.x0-b.x0);return L.map(t=>t.s).join(' ').replace(/\s+/g,' ').trim().toUpperCase()}
