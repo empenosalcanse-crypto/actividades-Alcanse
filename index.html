@@ -884,10 +884,55 @@ function vRoles(){
   return`<div class="sec-h"><h2>Rol de trabajo</h2><span class="note">Dónde trabaja cada colaborador cada día</span></div>${msgHtml('rol')}
   <div class="alerta" role="note"><b>Cómo funciona</b><span>En descanso o sin turno no se le asignan tareas. Las tareas de la sucursal (metas, conteos, cuadre de caja, llamadas, publicaciones, cargar tecnología y exhibir) las hace quien trabaje ese día en esa sucursal. Si no hay nadie del puesto en la sucursal ese día, las hace quien tenga marcado "Cubre a" ese puesto (por ejemplo, Sinaí cubre encargada y César cubre cajero).</span></div>
   <div class="row"><button class="btn pri" type="button" id="rolSave">Guardar rol</button>${M&&Object.keys(M).length?`<button class="btn" type="button" id="rolClear">Quitar cambios de ${mesLabel(mes).toLowerCase()}</button>`:''}${S.rolSucio?'<span class="note">Hay cambios sin guardar.</span>':''}</div>
-  ${cal}${pat}`;
+  ${vRolImport()}${cal}${pat}`;
 }
+/* ---- subir rol desde Excel ---- */
+const XLSX_URL='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+function cargarXlsx(){if(window.XLSX)return Promise.resolve();return new Promise((ok,ko)=>{const s=document.createElement('script');s.src=XLSX_URL;s.onload=()=>ok();s.onerror=()=>ko(new Error('No se pudo cargar el lector de Excel. Revisa tu internet.'));document.head.appendChild(s)})}
+const normTx=v=>String(v??'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/\s+/g,' ').trim();
+const MES_N={ENERO:1,FEBRERO:2,MARZO:3,ABRIL:4,MAYO:5,JUNIO:6,JULIO:7,AGOSTO:8,SEPTIEMBRE:9,SETIEMBRE:9,OCTUBRE:10,NOVIEMBRE:11,DICIEMBRE:12};
+const DIA_N={DOMINGO:0,LUNES:1,MARTES:2,MIERCOLES:3,JUEVES:4,VIERNES:5,SABADO:6};
+function aliasCols(){const C=colsRol();const cnt={};const tok=c=>{const t=new Set([normTx(c.id),normTx(nombreCorto(c))]);normTx(c.nombre).split(/[ .]+/).filter(x=>x.length>=3).forEach(x=>t.add(x));return[...t]};
+  C.forEach(c=>tok(c).forEach(t=>cnt[t]=(cnt[t]||0)+1));const M={};C.forEach(c=>tok(c).forEach(t=>{if(cnt[t]===1)M[t]=c.id}));
+  const R=(S.draftRoles||S.roles||{}).alias||{};Object.entries(R).forEach(([k,v])=>M[normTx(k)]=v);return M}
+function parseRolGrid(G){const A=aliasCols();const avisos=[];const asig={};const semanas=[];
+  const set=(id,k,v,dond)=>{asig[id]=asig[id]||{};const prev=asig[id][k];if(prev&&prev!==v&&!(prev==='Descanso'&&v==='Descanso')){if(prev==='Descanso'||v==='Descanso'){avisos.push(`${nombreCorto(colById(id))} el ${fCorta(D0(k))} aparece trabajando y en descanso; se tomó ${v==='Descanso'?'descanso':v}.`)}else avisos.push(`${nombreCorto(colById(id))} el ${fCorta(D0(k))} aparece en ${prev} y en ${v}; se tomó ${v}.`)}asig[id][k]=v};
+  const nombres=(txt,dond)=>{const out=[];String(txt).split(/[-,\/&+;]| Y |\n/).map(normTx).filter(Boolean).forEach(p=>{if(/^(DESCANSO|VACACIONES|INCAPACIDAD|FALTA)$/.test(p))return;const id=A[p]||A[p.split(' ')[0]];if(id)out.push(id);else avisos.push(`No reconocí "${p}" (${dond}). Agrégalo como nombre corto del colaborador o corrígelo en el Excel.`)});return out};
+  for(let r=0;r<G.length;r++){const fila=G[r].map(normTx);const t=fila.join(' ');const m=t.match(/ROL(?:ES)? DE TRABAJO DEL (\d{1,2})(?: DE ([A-Z]+))?(?: DE (\d{4}))? AL (\d{1,2}) DE ([A-Z]+)(?: DE)? (\d{4})/);if(!m)continue;
+    const y2=+m[6],m2=MES_N[m[5]],m1=m[2]?MES_N[m[2]]:m2;let y1=m[3]?+m[3]:y2;if(m1>m2)y1=y2-1;const ini=new Date(y1,m1-1,+m[1]);
+    let h=-1;for(let k=r+1;k<Math.min(G.length,r+4);k++){if(G[k].map(normTx).filter(x=>DIA_N[x]!=null).length>=5){h=k;break}}if(h<0){avisos.push(`La semana "${m[0]}" no tiene la fila de días (DOMINGO a SÁBADO).`);continue}
+    const colD={};G[h].map(normTx).forEach((x,j)=>{if(DIA_N[x]!=null){const off=(DIA_N[x]-dow(ini)%7+7)%7;colD[j]=iso(addD(ini,off))}});
+    const fechas=Object.values(colD);semanas.push({ini:iso(ini),fin:fechas.sort().slice(-1)[0],titulo:m[0]});const vistos={};
+    let lbl='';for(let k=h+1;k<G.length;k++){const fk=G[k].map(normTx);if(/ROL(?:ES)? DE TRABAJO DEL/.test(fk.join(' ')))break;
+      const etq=fk.slice(0,Math.min(...Object.keys(colD).map(Number))).filter(Boolean).join(' ');if(etq)lbl=etq;
+      const tipo=/CUAUHT/.test(lbl)?'Cuauhtémoc':/CENTRO/.test(lbl)?'Centro':/DESCANSO/.test(lbl)?'Descanso':/VACACION|INCAPACIDAD/.test(lbl)?'Descanso':null;if(!tipo)continue;
+      Object.entries(colD).forEach(([j,f])=>{const v=G[k][j];if(!normTx(v))return;nombres(v,`${lbl.toLowerCase()} ${fCorta(D0(f))}`).forEach(id=>{set(id,f,tipo);vistos[id+'|'+f]=1})})}
+    colsRol().forEach(c=>fechas.forEach(f=>{if(!vistos[c.id+'|'+f]&&!(asig[c.id]||{})[f])set(c.id,f,'Sin turno')}))}
+  if(!semanas.length)avisos.unshift('No encontré ninguna semana con el título "ROLES DE TRABAJO DEL … AL …". Revisa que el archivo tenga ese encabezado.');
+  return{asig,avisos,semanas}}
+async function leerRolExcel(f){await cargarXlsx();const buf=await f.arrayBuffer();const wb=XLSX.read(buf,{type:'array',cellDates:true});const out={asig:{},avisos:[],semanas:[]};
+  wb.SheetNames.forEach(n=>{const G=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:false,defval:''});const r=parseRolGrid(G);
+    Object.entries(r.asig).forEach(([id,m])=>{out.asig[id]=Object.assign(out.asig[id]||{},m)});out.avisos.push(...r.avisos.filter(a=>!/^No encontré/.test(a)||wb.SheetNames.length===1));out.semanas.push(...r.semanas)});
+  if(!out.semanas.length&&!out.avisos.length)out.avisos.push('No encontré ninguna semana con el título "ROLES DE TRABAJO DEL … AL …".');return out}
+function vRolImport(){const I=S.rolImp;
+  return`<div class="card"><div class="row"><h3 style="flex:1">Subir rol desde Excel</h3><button class="btn" type="button" id="rolXlsB">📄 Elegir archivo de Excel</button></div>
+  <p class="note">Sube el Excel de roles con el formato de siempre: título "ROLES DE TRABAJO DEL … AL …", fila de días (DOMINGO a SÁBADO), bloques CENTRO y CUAUHTÉMOC con los nombres, y fila DESCANSOS. Puede traer varias semanas en la misma hoja. Quien no aparezca un día queda "sin turno". Revisa la vista previa antes de aplicar.</p>
+  <input id="rolXls" class="vh" type="file" accept=".xlsx,.xls,.ods,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
+  ${I?(()=>{const F=[...new Set(Object.values(I.asig).flatMap(m=>Object.keys(m)))].sort();const C=colsRol().filter(c=>I.asig[c.id]);const dl=['','L','M','M','J','V','S','D'];
+    return`<div class="alerta" role="note"><b>${esc(I.nombre)}</b><span>${I.semanas.length} semana(s): ${I.semanas.map(s=>`${fCorta(D0(s.ini))} al ${fCorta(D0(s.fin))}`).join(' · ')}</span></div>
+    ${I.avisos.length?`<div class="msg err" role="alert"><b>Revisa:</b><ul>${I.avisos.slice(0,12).map(a=>`<li>${esc(a)}</li>`).join('')}</ul></div>`:''}
+    ${F.length?`<div style="overflow-x:auto"><table class="rol-cal"><thead><tr><th>Colaborador</th>${F.map(k=>{const d=D0(k);return`<th class="${dow(d)>=6?'fin':''}">${dl[dow(d)]}<br>${d.getDate()}</th>`}).join('')}</tr></thead><tbody>
+    ${C.map(c=>`<tr><td><b>${esc(nombreCorto(c))}</b></td>${F.map(k=>{const v=(I.asig[c.id]||{})[k]||'';return`<td><span class="rc ${v==='Descanso'?'des':v==='Centro'?'cen':v==='Cuauhtémoc'?'cua':v==='Sin turno'?'st':''}">${LUG_ABR[v]||'·'}</span></td>`}).join('')}</tr>`).join('')}</tbody></table></div>
+    <div class="row"><button class="btn pri" type="button" id="rolImpOk">Aplicar al rol y guardar</button><button class="btn" type="button" id="rolImpNo">Descartar</button></div>`:''}`})():''}</div>`}
+function bindRolImport(){const R=rolesDraft();const b=$('#rolXlsB'),fi=$('#rolXls');if(b&&fi){b.onclick=()=>fi.click();fi.onchange=async()=>{const f=fi.files[0];fi.value='';if(!f)return;flash('rol','ok','Leyendo el archivo…');
+    try{const r=await leerRolExcel(f);S.rolImp=Object.assign(r,{nombre:f.name});flash('rol',r.semanas.length?'ok':'err',r.semanas.length?'Archivo leído. Revisa la vista previa y toca "Aplicar al rol y guardar".':'No se pudo leer el rol de este archivo.')}catch(e){flash('rol','err','No se pudo leer el archivo: '+e.message)}render()}}
+  const no=$('#rolImpNo');if(no)no.onclick=()=>{S.rolImp=null;render()};
+  const ok=$('#rolImpOk');if(ok)ok.onclick=async()=>{const I=S.rolImp;Object.entries(I.asig).forEach(([id,m])=>Object.entries(m).forEach(([k,v])=>{const mes=k.slice(0,7);R.meses[mes]=R.meses[mes]||{};R.meses[mes][id]=R.meses[mes][id]||{};R.meses[mes][id][k]=v}));
+    ok.disabled=true;const{error}=await S.sb.from('config').upsert({id:'roles',data:R,actualizado:ahora().toISOString()});ok.disabled=false;
+    if(error){flash('rol','err',errText(error));return}S.roles=JSON.parse(JSON.stringify(R));S.rolSucio=false;const n=I.semanas.length;S.rolMes=(I.semanas[0]||{}).ini?I.semanas[0].ini.slice(0,7):S.rolMes;S.rolImp=null;
+    flash('rol','ok',`Rol aplicado y guardado (${n} semana${n===1?'':'s'}). Las tareas ya se asignan con este rol.`);render()}}
 function bindRoles(){
-  const R=rolesDraft();const sucio=()=>{S.rolSucio=true;render()};
+  bindRolImport();const R=rolesDraft();const sucio=()=>{S.rolSucio=true;render()};
   const rm=$('#rolMes');if(rm)rm.onchange=()=>{S.rolMes=rm.value;render()};
   $$('[data-cubre]').forEach(el=>el.onchange=()=>{R.cubre=R.cubre||{};const id=el.dataset.cubre,pp=el.dataset.p;const L=new Set(R.cubre[id]||[]);el.checked?L.add(pp):L.delete(pp);if(L.size)R.cubre[id]=[...L];else delete R.cubre[id];sucio()});
   $$('[data-pat]').forEach(el=>el.onchange=()=>{const id=el.dataset.pat,w=el.dataset.w;R.patron[id]=R.patron[id]||{};if(el.value)R.patron[id][w]=el.value;else delete R.patron[id][w];sucio()});
