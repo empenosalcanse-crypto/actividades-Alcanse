@@ -1095,7 +1095,7 @@ async function pushActivar(){
 async function pushDesactivar(){const sub=await pushSubActual();await pushQuitarRegistro();if(sub)try{await sub.unsubscribe()}catch(e){}}
 async function pushPrueba(){const{data,error}=await S.sb.functions.invoke('avisos',{body:{modo:'prueba'}});if(error)throw error;return(data&&data.enviados)||0}
 function avisosQue(){const me=meCol();const L=[];
-  if(me)L.push(['⏰','Recordatorio','una hora antes del límite, si te falta alguna tarea del día (ej. 5:00 pm para las de 6:00 pm).'],['⚠️','Tarea vencida','si se pasó el límite y no la registraste.'],['📌','Acción correctiva','cuando se te asigna una nueva.']);
+  if(me)L.push(['📝','Tareas del día','a las 10:00 am, las que tienes por registrar hoy.'],['⏰','Recordatorio','a las 4:00 pm, si aún te falta alguna tarea del día.'],['⚠️','Tarea vencida','si se pasó el límite y no la registraste.'],['📌','Acción correctiva','cuando se te asigna una nueva.']);
   if(esMgr())L.push(['📋','Resumen del día','a las 6:05 pm, cuántas tareas quedaron vencidas por persona.']);
   if(S.admin)L.push(['✅','Acción correctiva hecha','cuando un colaborador la marca como hecha.']);
   return L}
