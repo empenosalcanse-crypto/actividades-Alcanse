@@ -199,8 +199,8 @@ table.asis .in{min-width:56px;padding:6px 8px}table.asis tr.off td{opacity:.45}
 .dash-leg{display:flex;gap:16px;font-size:.85rem;color:var(--ink-2);margin:6px 0;--c1:#0089b5;--c2:#c68400}.dash-leg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .dash-svg,:root:not([data-theme="light"]) .dash-leg{--c1:#1aa3d1;--c2:#b87d00}}
 :root[data-theme="dark"] .dash-svg,:root[data-theme="dark"] .dash-leg{--c1:#1aa3d1;--c2:#b87d00}
-.dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:14px;align-items:start}
-.dash-suc .kpis,.card>.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:10px 0}
+.dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(420px,100%),1fr));gap:14px;align-items:start}
+.dash-grid>*{min-width:0}.dash-suc .kpis,.card>.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(130px,100%),1fr));gap:10px;margin:10px 0}
 .kpi{display:flex;flex-direction:column;gap:2px}.kpi span{font-size:.74rem;color:var(--ink-2);text-transform:uppercase;letter-spacing:.04em}.kpi b{font-size:1.45rem;color:var(--ink)}.kpi small{font-size:.78rem;color:var(--muted)}
 .kpi b.good{color:var(--good,#1d8657)}.kpi b.warn{color:var(--warn,#a86a10)}.kpi b.bad{color:var(--bad,#c0402c)}
 .dash-op{border-top:1px dashed var(--line);padding-top:10px}
