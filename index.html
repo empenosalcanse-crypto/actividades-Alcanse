@@ -335,7 +335,7 @@ function instancias(col,a,b){
     for(const p of periodos(act,a,b)){
       if(desde&&p.lim<desde)continue;
       let lug=col.suc||'';const dd=dia0(p.lim);
-      if(diaFijo&&!act.porSuc){lug=lugarDe(col,dd);
+      if((diaFijo||act.cubre)&&!act.porSuc){lug=lugarDe(col,dd);
         if(NO_TRABAJA(lug)){if(act.frec==='semanal'&&!act.cubre)lug=col.suc||'';else continue}
         if(act.cubre&&responsable(act,lug,dd)!==col.id)continue}
       let sucs=act.porSuc?SUCS:[null];
@@ -1553,12 +1553,15 @@ function leerInv(a,inst){const F=filasDe(a,inst.suc);const out={rows:{},obs:(($(
 /* ---- reporte de asistencia ---- */
 const AS_C=[['dl','Días laborados'],['fa','Faltas'],['re','Retardos'],['di','Días inhábiles'],['pd','Prima dominical'],['in','Incapacidades'],['va','Vacaciones']];
 function periodoAsis(inst){const lim=dia0(inst.lim);const fin=addD(lim,-((dow(lim)+7-6)%7||7));const ini=addD(fin,-6);return{ini,fin}}
-function colsAsis(){return cfgCols().filter(c=>c.activo!==false)}
-function asisPrefill(inst){const{ini,fin}=periodoAsis(inst);const R={};colsAsis().forEach(c=>{let dl=0,pd=0;for(let d=new Date(ini);d<=fin;d=addD(d,1)){const l=lugarDe(c,d);if(!NO_TRABAJA(l)){dl++;if(dow(d)===7)pd=1}}
+function colsAsis(inst){const all=cfgCols().filter(c=>c.activo!==false);const yo=inst&&colById(inst.col);if(!yo||yo.puesto==='coord'||!yo.suc)return all;
+  /* encargada: colaboradores de su sucursal y quien trabajó ahí esa semana según el rol */
+  const{ini,fin}=periodoAsis(inst);const ahi=c=>{for(let d=new Date(ini);d<=fin;d=addD(d,1))if(lugarDe(c,d)===yo.suc)return true;return false};
+  return all.filter(c=>c.id===yo.id||c.suc===yo.suc||ahi(c))}
+function asisPrefill(inst){const{ini,fin}=periodoAsis(inst);const R={};colsAsis(inst).forEach(c=>{let dl=0,pd=0;for(let d=new Date(ini);d<=fin;d=addD(d,1)){const l=lugarDe(c,d);if(!NO_TRABAJA(l)){dl++;if(dow(d)===7)pd=1}}
   R[c.id]={inc:true,dl:'',fa:'',re:'',di:'',pd:'',in:'',va:'',ob:''}});return R}
 function asisTot(rows){const L=Object.entries(rows||{}).filter(([k,x])=>x&&x.inc);const T={n:L.length};AS_C.forEach(([k])=>T[k]=L.reduce((s,[,x])=>s+num(x[k]),0));
   const dls=[...new Set(L.map(([,x])=>num(x.dl)))];T.dlTxt=L.length?(dls.length===1?`${dls[0]} por colaborador`:`${T.dl} en total`):'0';const pds=[...new Set(L.map(([,x])=>num(x.pd)))];T.pdTxt=L.length?(pds.length===1?`${pds[0]} por colaborador`:`${T.pd} en total`):'0';return T}
-function formAsis(a,inst,d,dis){const{ini,fin}=periodoAsis(inst);const R=(d&&d.rows)||asisPrefill(inst);const C=colsAsis();const T=asisTot(R);
+function formAsis(a,inst,d,dis){const{ini,fin}=periodoAsis(inst);const R=(d&&d.rows)||asisPrefill(inst);const C=colsAsis(inst);const T=asisTot(R);
   return`<div class="cj-res"><b>Periodo:</b> semana del ${fLarga(ini)} al ${fLarga(fin)} · <b>Periodicidad:</b> semanal</div>
   <p class="note">Captura los datos de cada colaborador; lo que dejes en blanco cuenta como 0. Quita la palomita de quien no se reporta en esta nómina.</p>
   <div class="tbl"><table class="asis"><thead><tr><th>Reportar</th><th>Colaborador</th>${AS_C.map(([k,l])=>`<th class="n">${l}</th>`).join('')}<th>Observaciones</th></tr></thead><tbody>
