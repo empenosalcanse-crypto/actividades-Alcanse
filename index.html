@@ -144,7 +144,7 @@ td.dif-n{color:var(--bad);font-weight:700}td.dif-p{color:var(--warn);font-weight
 .sheet-h{display:flex;gap:10px;align-items:flex-start}
 .sheet-h div{flex:1;min-width:0}
 .msg{border-radius:8px;padding:8px 12px;font-size:.88rem;font-weight:600}
-.msg.ok{background:var(--good-soft);color:var(--good)}.msg.err{background:var(--bad-soft);color:var(--bad)}
+.msg.ok{background:var(--good-soft);color:var(--good)}.msg.err{background:var(--bad-soft);color:var(--bad)}.msg.warn{background:var(--amarillo-soft);color:#6b4b00}
 .fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
 .slogan{font-style:italic;color:var(--muted);text-align:center;font-size:.85rem}
 .chk{display:flex;gap:6px;flex-wrap:wrap}
@@ -222,6 +222,7 @@ table.asis .in{min-width:56px;padding:6px 8px}table.asis tr.off td{opacity:.45}
 .hint-scroll{display:none}
 @media (max-width:560px){.hint-scroll{display:block}.cap td input{min-width:54px}.who{align-items:flex-start;width:100%}.ttl h1{font-size:1.4rem}th,td{padding:7px 8px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+.av-l{list-style:none;padding:0;margin:4px 0 14px;display:grid;gap:10px}.av-l li{display:flex;gap:10px;align-items:flex-start;font-size:14px;line-height:1.4}.av-l li>span{font-size:18px;line-height:1.2}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -415,6 +416,7 @@ async function cargarTodo(silencioso){
     {const ac=await S.sb.from('acciones').select('*').order('limite');if(!ac.error)S.acc=ac.data||[]}
     if(verAud()){const au=await S.sb.from('auditorias').select('*').order('fecha',{ascending:false}).order('creado',{ascending:false}).limit(300);if(!au.error)S.aud=au.data||[]}
     S.sync=['ok','Datos al día · '+fHora(ahora())];
+    if(S.pushUid!==S.uid){S.pushUid=S.uid;pushSincronizar()}
   }catch(e){S.sync=['off','No se pudieron cargar los datos. Revisa tu conexión; se reintenta cada minuto.']}
   S.cargando=false;render();
 }
@@ -479,7 +481,7 @@ function draw(){
   if(!S.sb){$('#who').innerHTML='';$('#tabs').innerHTML='';M.innerHTML=`<div class="card"><h3>Sin conexión</h3><p class="lede">${esc(S.sync[1])}</p></div>`;drawModal();return}
   if(!S.session){$('#who').innerHTML='';$('#tabs').innerHTML='';document.title='Actividades Alcanse';M.innerHTML=vLogin();bindLogin();drawModal();return}
   if(!S.cfgLoaded){M.innerHTML=`<div class="card"><p class="lede">Cargando actividades…</p></div>`;drawModal();return}
-  const cuenta=`<span class="row" style="gap:6px;justify-content:flex-end"><button class="btn sm" type="button" id="btnPass">Mi contraseña</button><button class="btn sm" type="button" id="btnSalir">Salir · cambiar usuario</button></span>`;
+  const cuenta=`<span class="row" style="gap:6px;justify-content:flex-end"><button class="btn sm" type="button" id="btnAvisos" title="Notificaciones en este dispositivo">🔔 Avisos</button><button class="btn sm" type="button" id="btnPass">Mi contraseña</button><button class="btn sm" type="button" id="btnSalir">Salir · cambiar usuario</button></span>`;
   if(!S.perfil||!S.perfil.activo){$('#tabs').innerHTML='';$('#who').innerHTML=cuenta;M.innerHTML=`<div class="card"><h3>Tu usuario no tiene acceso</h3><p class="lede">Tu usuario no está dado de alta o fue desactivado. Habla con Dirección.</p></div>`;bindCuenta();drawModal();return}
   const me=meCol();const mgr=esMgr();
   const T=tabsDisponibles();const h=(location.hash||'').slice(1);
@@ -1060,12 +1062,57 @@ function bindLogin(){const f=$('#fLogin');if(!f)return;const lm=t=>{$('#lgMsg').
   const{error}=await S.sb.auth.signInWithPassword({email:u+DOM,password:p});
   if(error){b.disabled=false;b.textContent='Entrar';lm(errText(error))}}}
 function bindCuenta(){
+  const av=$('#btnAvisos');if(av)av.onclick=()=>{S.modal={k:'__avisos',avisos:true};render()};
   const s=$('#btnSalir');if(s)s.onclick=async()=>{s.disabled=true;s.textContent='Saliendo…';
+    try{await Promise.race([pushQuitarRegistro(),new Promise(r=>setTimeout(r,2500))])}catch(e){}
     try{await Promise.race([S.sb.auth.signOut({scope:'local'}),new Promise(r=>setTimeout(r,3000))])}catch(e){}
     try{Object.keys(localStorage).filter(k=>/^sb-.*-auth-token/.test(k)).forEach(k=>localStorage.removeItem(k))}catch(e){}
     S.session=null;S.modal=null;limpiar();if(location.hash)history.replaceState(null,'',location.pathname+location.search);render();
     setTimeout(()=>{const u=$('#lgU');if(u){u.value='';u.focus()}const pw=$('#lgP');if(pw)pw.value=''},50)};
   const p=$('#btnPass');if(p)p.onclick=()=>{S.modal={k:'__pass',pass:true};render()};
+}
+/* ============ avisos (notificaciones push) ============ */
+const VAPID_PUB='BKL0E2aVYXtbk8GVp_mBcRWUWnAn6vhfiJ8aKggLb8FR2TDaeuSDMueTVRflVrgvKT05XCDIEWkh5soWXXN0fQ4';
+const esIOS=()=>/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const esApp=()=>window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+const pushSoportado=()=>'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
+const b64u=s=>{const p='='.repeat((4-s.length%4)%4);const r=atob((s+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(r,c=>c.charCodeAt(0))};
+async function pushReg(){if(!pushSoportado()||window.__DEMO)return null;try{return await Promise.race([navigator.serviceWorker.ready,new Promise(r=>setTimeout(()=>r(null),4000))])}catch(e){return null}}
+async function pushSubActual(){const r=await pushReg();if(!r)return null;try{return await r.pushManager.getSubscription()}catch(e){return null}}
+async function pushGuardar(sub){const j=sub.toJSON();const{error}=await S.sb.rpc('registrar_push',{p_endpoint:j.endpoint,p_p256dh:j.keys.p256dh,p_auth:j.keys.auth,p_ua:navigator.userAgent});if(error)throw error}
+/* al entrar: si este dispositivo ya tenía avisos, se ligan al usuario que entró */
+async function pushSincronizar(){try{if(!pushSoportado()||Notification.permission!=='granted')return;const sub=await pushSubActual();if(sub)await pushGuardar(sub)}catch(e){}}
+async function pushQuitarRegistro(){try{const sub=await pushSubActual();if(sub&&S.sb)await S.sb.from('push_subs').delete().eq('endpoint',sub.endpoint)}catch(e){}}
+async function pushActivar(){
+  if(window.__DEMO)throw new Error('En la demostración no se activan avisos. Hazlo en el sistema real.');
+  if(!pushSoportado())throw new Error(esIOS()&&!esApp()?'En iPhone primero instala la app: Compartir → "Agregar a inicio", ábrela desde el ícono y activa los avisos ahí.':'Este navegador no permite avisos. Usa Chrome en Android o en la computadora.');
+  const perm=await Notification.requestPermission();
+  if(perm!=='granted')throw new Error(perm==='denied'?'Los avisos están bloqueados para esta página. Actívalos en la configuración del navegador (ícono del candado o ⋮ → Configuración del sitio → Notificaciones → Permitir) y vuelve a intentar.':'No se dio permiso para los avisos.');
+  const r=await pushReg();if(!r)throw new Error('No se pudo preparar el servicio de avisos. Cierra y vuelve a abrir la app.');
+  let sub=await r.pushManager.getSubscription();
+  if(!sub)sub=await r.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u(VAPID_PUB)});
+  await pushGuardar(sub);return sub}
+async function pushDesactivar(){const sub=await pushSubActual();await pushQuitarRegistro();if(sub)try{await sub.unsubscribe()}catch(e){}}
+async function pushPrueba(){const{data,error}=await S.sb.functions.invoke('avisos',{body:{modo:'prueba'}});if(error)throw error;return(data&&data.enviados)||0}
+function avisosQue(){const me=meCol();const L=[];
+  if(me)L.push(['⏰','Recordatorio','una hora antes del límite, si te falta alguna tarea del día (ej. 5:00 pm para las de 6:00 pm).'],['⚠️','Tarea vencida','si se pasó el límite y no la registraste.'],['📌','Acción correctiva','cuando se te asigna una nueva.']);
+  if(esMgr())L.push(['📋','Resumen del día','a las 6:05 pm, cuántas tareas quedaron vencidas por persona.']);
+  if(S.admin)L.push(['✅','Acción correctiva hecha','cuando un colaborador la marca como hecha.']);
+  return L}
+async function drawAvisos(el){
+  const sop=pushSoportado()&&!window.__DEMO;const perm=sop?Notification.permission:'';const sub=sop?await pushSubActual():null;const on=!!(sub&&perm==='granted');
+  const ios=esIOS()&&!esApp();
+  el.innerHTML=`<div class="ov" id="ov"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="aT" style="max-width:480px">
+  <div class="sheet-h"><div><h3 id="aT">Avisos en este dispositivo</h3><p class="note">${on?'<b style="color:var(--good)">Activados</b> en este dispositivo.':'Desactivados en este dispositivo.'} Se activan en cada celular o computadora por separado.</p></div><button class="btn sm" type="button" id="mX">Cerrar</button></div>
+  <ul class="av-l">${avisosQue().map(([i,t,d])=>`<li><span>${i}</span><div><b>${esc(t)}</b> ${esc(d)}</div></li>`).join('')}</ul>
+  ${window.__DEMO?'<p class="note">En la demostración no se envían avisos. Actívalos en el sistema real.</p>':ios?'<div class="msg warn">En iPhone los avisos solo funcionan con la app instalada: toca Compartir → "Agregar a inicio", abre Alcanse desde el ícono y activa los avisos ahí.</div>':!sop?'<div class="msg warn">Este navegador no permite avisos. Usa Chrome en Android o en la computadora.</div>':perm==='denied'?'<div class="msg warn">Los avisos están bloqueados para esta página. Permítelos en la configuración del sitio del navegador (candado o ⋮ → Configuración del sitio → Notificaciones) y vuelve a abrir esta ventana.</div>':''}
+  <div id="modMsg">${msgHtml('mod')}</div>
+  <div class="row">${on?`<button class="btn pri" type="button" id="avTest">Enviarme un aviso de prueba</button><button class="btn" type="button" id="avOff">Desactivar</button>`:`<button class="btn pri" type="button" id="avOn"${window.__DEMO||ios||!sop?' disabled':''}>🔔 Activar avisos</button>`}</div></div></div>`;
+  $('#mX').onclick=cerrar;$('#ov').onclick=e=>{if(e.target.id==='ov')cerrar()};
+  const bt=(id,fn)=>{const b=$('#'+id);if(b)b.onclick=async()=>{b.disabled=true;try{await fn()}catch(e){flash('mod','err',e&&e.message?e.message:errText(e))}b.disabled=false}};
+  bt('avOn',async()=>{await pushActivar();S.modal.redraw=true;flash('mod','ok','Avisos activados. Toca "Enviarme un aviso de prueba" para confirmar.')});
+  bt('avOff',async()=>{await pushDesactivar();S.modal.redraw=true;flash('mod','ok','Avisos desactivados en este dispositivo.')});
+  bt('avTest',async()=>{const n=await pushPrueba();flash('mod',n?'ok':'err',n?'Aviso enviado. Debe llegarte en unos segundos.':'No se encontró este dispositivo. Desactiva y vuelve a activar los avisos.')});
 }
 function drawPass(el){
   el.innerHTML=`<div class="ov" id="ov"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pT" style="max-width:440px">
@@ -1421,6 +1468,7 @@ function cerrar(){S.modal=null;delete S.msg.mod;render()}
 function drawModal(){
   const el=$('#modal');const md=S.modal;if(!md){el.innerHTML='';el.dataset.k='';return}
   if(md.pass){if(el.dataset.k!=='__pass'){el.dataset.k='__pass';drawPass(el)}else{const m=$('#modMsg');if(m)m.innerHTML=msgHtml('mod')}return}
+  if(md.avisos){if(el.dataset.k!=='__avisos'||md.redraw){md.redraw=false;el.dataset.k='__avisos';drawAvisos(el)}else{const m=$('#modMsg');if(m)m.innerHTML=msgHtml('mod')}return}
   if(el.dataset.k===md.k&&el.innerHTML&&!md.redraw){const m=$('#modMsg');if(m)m.innerHTML=msgHtml('mod');return}
   md.redraw=false;el.dataset.k=md.k;
   const{inst,cid}=md;const a=inst.act;const rec=(S.idx[cid]||{})[inst.key];const me=meCol();
