@@ -258,6 +258,7 @@ const JOYAS=[['anillo','Anillo'],['aretes','Aretes'],['cadena','Cadena'],['dijes
 const PISO=[['tec','Tecnología'],['lb','Línea blanca'],['her','Herramientas'],['maq','Maquinaria industrial'],['veh','Vehículos']];
 const MOT_J=['Faltante en inventario','Duplicado','Apartado'];
 const HORA_MAX='18:00';
+const VENC_DIAS=14,VENC_INV=30; /* días para registrar tarde una vencida (inventarios: 30) */
 const MOT_P=['Faltante','Duplicado','Apartado'];
 const TIPOS={asistencia:'Formato: reporte de asistencia',check:'Confirmar que se hizo',campos:'Con datos a capturar',joyeria:'Formato: conteo diario de joyería',piso:'Formato: conteo piso de venta',validar:'Validar conteos (se marca sola)',inventario:'Formato: inventario de almacenes',caja:'Formato: cuadre de caja'};
 const ST_L={ok:'Hecha',tarde:'Hecha tarde',vencida:'Vencida',hoy:'Pendiente hoy',abierta:'Pendiente',futura:'Próxima'};
@@ -369,8 +370,9 @@ function statsMes(col,mes,now){
   o.total=o.ok+o.tarde+o.vencida;o.pct=o.total?(o.ok+o.tarde)/o.total:NaN;o.pctT=o.total?o.ok/o.total:NaN;return o;
 }
 function ventana(col,now){
-  const hoy=dia0(now);const L=instancias(col,addD(hoy,-14),addD(hoy,45));const R=S.idx[col.id]||{};
-  const venc=L.filter(i=>i.lim<now&&!hecho(R[i.key])).sort((x,y)=>y.lim-x.lim);
+  const hoy=dia0(now);const L=instancias(col,addD(hoy,-VENC_INV),addD(hoy,45));const R=S.idx[col.id]||{};
+  /* vencidas que aún se pueden registrar tarde: 14 días; inventarios 30 días */
+  const venc=L.filter(i=>i.lim<now&&!hecho(R[i.key])&&i.lim>=addD(hoy,-(i.act.tipo==='inventario'?VENC_INV:VENC_DIAS))).sort((x,y)=>y.lim-x.lim);
   const deHoy=L.filter(i=>iso(i.lim)===iso(hoy)&&!(i.lim<now&&!hecho(R[i.key])));
   const fin=new Date(hoy.getFullYear(),hoy.getMonth(),hoy.getDate(),23,59,59);
   const prox=L.filter(i=>i.lim>fin&&i.ini<=now);
@@ -454,7 +456,7 @@ function vSucursal(me){
   <div class="tiles"><div class="tile ${PV.length?'bad':'good'}"><span>Por validar</span><b>${PV.length}</b></div><div class="tile"><span>Colaboradores</span><b>${team.length}</b></div></div>
   <section class="list"><div class="sec-h"><h3>Registros por validar</h3><span class="note">Últimos 14 días. Ábrelo, revisa lo que capturaron y toca "Validar".</span></div>
   ${PV.length?`<div class="tbl"><table><thead><tr><th>Registrada</th><th>Colaborador</th><th>Actividad</th><th>Estado</th><th></th></tr></thead><tbody>${PV.map(x=>{const st=new Date(x.r.at)<=new Date(x.r.lim)?'ok':'tarde';return`<tr class="clk" data-open="${esc(x.c.id+'~'+x.r.key)}" tabindex="0"><td>${fCorta(new Date(x.r.at))} ${fHora(new Date(x.r.at))}</td><td>${esc(nombreCorto(x.c))}</td><td>${esc(x.r.nombre||'')}</td><td><span class="pill ${st}">${ST_L[st]}</span></td><td><button class="btn sm pri" type="button" data-open="${esc(x.c.id+'~'+x.r.key)}">Revisar</button></td></tr>`}).join('')}</tbody></table></div>`:'<div class="empty">Todo validado. No hay registros pendientes de tu equipo.</div>'}</section>
-  <div class="card"><h3>Mi equipo</h3><div class="tbl"><table><thead><tr><th>Colaborador</th><th class="n">Hoy</th><th class="n">Vencidas 14 días</th><th class="n">Por validar</th><th class="n">Cumplimiento</th></tr></thead><tbody>${filas}</tbody></table></div>
+  <div class="card"><h3>Mi equipo</h3><div class="tbl"><table><thead><tr><th>Colaborador</th><th class="n">Hoy</th><th class="n" title="Últimos 14 días (inventarios: 30)">Vencidas</th><th class="n">Por validar</th><th class="n">Cumplimiento</th></tr></thead><tbody>${filas}</tbody></table></div>
   <p class="note">Toca un nombre para ver su detalle día por día. Si algo no está bien, no lo valides y habla con la persona; mientras no esté validado lo puede corregir.</p></div>`;
 }
 function tabsDisponibles(){
@@ -1197,7 +1199,7 @@ function vRanking(){
 }
 function vMis(col,ro){
   const now=ahora();const W=ventana(col,now);const st=statsMes(col,mesOf(now),now);
-  const alerta=W.venc.length?`<div class="alerta bad" role="alert"><b>${W.venc.length}</b><span>${W.venc.length===1?'actividad vencida sin registrar':'actividades vencidas sin registrar'} en los últimos 14 días. ${ro?'':'Regístralas aunque sea tarde: quedan marcadas como "hecha tarde".'}</span></div>`
+  const alerta=W.venc.length?`<div class="alerta bad" role="alert"><b>${W.venc.length}</b><span>${W.venc.length===1?'actividad vencida sin registrar':'actividades vencidas sin registrar'} (se pueden registrar tarde hasta 14 días después; inventarios, hasta 30). ${ro?'':'Regístralas aunque sea tarde: quedan marcadas como "hecha tarde".'}</span></div>`
     :(W.todoHoy.length&&W.hechasHoy===W.todoHoy.length?`<div class="alerta ok"><b>Al día</b><span>Todas las actividades de hoy están registradas.</span></div>`:'');
   const sec=(t,L,vacio)=>`<section class="list"><div class="sec-h"><h3>${t}</h3><span class="note">${L.length} ${L.length===1?'actividad':'actividades'}</span></div>${L.length?L.map(i=>cardAct(i,W.R,now,ro)).join(''):`<div class="empty">${vacio}</div>`}</section>`;
   return`${ro?'':`<div class="sec-h"><h2>Hola, ${esc(nombreCorto(col))}</h2><span class="note">${fLarga(now)}</span></div>${vAccMis(col)}`}
@@ -1235,7 +1237,7 @@ function vEquipo(){
   <div class="tiles"><div class="tile ${tot.v?'bad':'good'}"><span>Vencidas del equipo</span><b>${tot.v}</b></div><div class="tile"><span>Cumplimiento ${mesLabel(mes).toLowerCase()}</span><b>${p0(tot.t?tot.ok/tot.t:NaN)}</b></div><div class="tile ${porVal?'':'good'}"><span>Conteos por validar</span><b>${porVal}</b></div></div>
   <div class="card"><div class="row"><h3 style="flex:1">Cumplimiento por colaborador</h3><label class="fl" for="mesSel" style="flex-direction:row;align-items:center;gap:8px">Mes<select class="sel" id="mesSel" style="width:auto">${mesesOpts().map(m=>`<option value="${m}" ${m===mes?'selected':''}>${mesLabel(m)}</option>`).join('')}</select></label>
   <button class="btn sm" type="button" id="btnPdfMes">Descargar PDF del mes</button></div>${msgHtml('eq')}
-  <div class="tbl"><table><thead><tr><th>Colaborador</th><th class="n">Hoy</th><th class="n">Vencidas 14 días</th><th class="n">Cumplimiento</th><th class="n">A tiempo</th><th class="n">Hechas / debidas</th><th>Nivel</th></tr></thead><tbody>${filas.map(f=>f.html).join('')}</tbody></table></div>
+  <div class="tbl"><table><thead><tr><th>Colaborador</th><th class="n">Hoy</th><th class="n" title="Últimos 14 días (inventarios: 30)">Vencidas</th><th class="n">Cumplimiento</th><th class="n">A tiempo</th><th class="n">Hechas / debidas</th><th>Nivel</th></tr></thead><tbody>${filas.map(f=>f.html).join('')}</tbody></table></div>
   <p class="note">Cumplimiento = actividades registradas (a tiempo o tarde) entre las que ya vencieron en el mes. Toca un nombre para ver su detalle día por día.</p></div>
   <section class="list"><div class="sec-h"><h3>Vencidas recientes (hoy y 2 días atrás)</h3></div>
   ${vencEq.length?`<div class="tbl"><table><thead><tr><th>Colaborador</th><th>Actividad</th><th>Límite</th></tr></thead><tbody>${vencEq.map(x=>`<tr class="clk" data-ver="${esc(x.c.id)}"><td>${esc(nombreCorto(x.c))}</td><td>${esc(x.i.act.nombre)}${x.i.porSuc?' · '+esc(x.i.suc):''}</td><td>${fCorta(x.i.lim)} ${fHora(x.i.lim)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Sin actividades vencidas en los últimos días.</div>'}</section>
